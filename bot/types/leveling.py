@@ -5,10 +5,15 @@ from .common import Snowflake, StrSnowflake
 __all__ = (
     'LevelingData',
     'LevelingConfig',
+    'RankCard',
 )
 
 
-class LevelingData(TypedDict):
+class _LevelingDataOptional(TypedDict, total=False):
+    rank: int
+
+
+class LevelingData(_LevelingDataOptional):
     guild_id: Snowflake
     user_id: Snowflake
     level: int  # default: 0
@@ -37,3 +42,23 @@ class LevelingConfig(TypedDict):
 
 # LevelingConfig.level_up_channel is either a channel's ID, or:
 # 0 for disabled, 1 for source channel, or 2 for DM
+
+
+class RankCard(TypedDict):
+    user_id: Snowflake
+    background_color: int  # default: 1644825
+    background_url: str | None
+    background_blur: int  # default: 0
+    background_alpha: float  # default: 1.0
+    font: int  # default: 0
+    primary_color: int  # default: 12434877
+    secondary_color: int  # default: 9671571
+    tertiary_color: int  # default: 7064552
+    overlay_color: int  # default: 15988735
+    overlay_alpha: float  # default: 0.15
+    overlay_border_radius: int  # default: 52
+    avatar_border_color: int  # default: 16777215
+    avatar_border_alpha: float  # default: 0.09
+    avatar_border_radius: int  # default: 103
+    progress_bar_color: int  # default: 16777215
+    progress_bar_alpha: float  # default: 0.16

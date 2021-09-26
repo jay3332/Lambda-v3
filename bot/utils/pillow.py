@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
-from typing import TYPE_CHECKING
+from typing import NamedTuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from bot.types import ImageSize
@@ -56,3 +56,27 @@ def alpha_paste(background: Image.Image, foreground: Image.Image, box: ImageSize
     with Image.new('RGBA', background.size) as overlay:
         overlay.paste(foreground, box, mask)
         return Image.alpha_composite(background, overlay)
+
+
+class FontManager:
+    """Manages fonts by opening then storing them in memory."""
+
+    def __init__(self) -> None:
+        self._fonts: dict[tuple[str, int], ImageFont.FreeTypeFont] = {}
+
+    def get(self, path: str, size: int) -> ImageFont.FreeTypeFont:
+        key = path, size
+        try:
+            return self._fonts[key]
+        except KeyError:
+            pass
+
+        with open(path, 'rb') as fp:
+            self._fonts[key] = font = ImageFont.truetype(fp, size=size)
+            return font
+
+    def clear(self) -> None:
+        self._fonts.clear()
+
+    def __del__(self) -> None:
+        self.clear()

@@ -1,5 +1,10 @@
 git+https://github.com/jay3332/discord.py
 git+https://github.com/Gorialis/jishaku
+aiohttp
 asyncpg
-python-dotenv
+fontTools
+pilmoji
 Pillow
+python-dotenv
+unidecode
+humanize

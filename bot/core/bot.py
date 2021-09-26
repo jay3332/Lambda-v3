@@ -4,10 +4,13 @@ import os
 from typing import Any, Generator
 
 import discord
+import aiohttp
 from dotenv import load_dotenv
 
 from .database import Database
 from .models import _BaseBot
+from bot.features.leveling.core import LevelingManager
+from bot.utils.pillow import FontManager
 
 load_dotenv()
 
@@ -24,10 +27,17 @@ class Lambda(_BaseBot):
             intents=discord.Intents.all(),
             update_application_commands_at_startup=True,
         )
+        self._setup()
         self._load_extensions()
-        self.db: Database = Database()
 
-    def _walk_extensions(self) -> Generator[Any, Any, str]:
+    def _setup(self) -> None:
+        self.db: Database = Database()
+        self.fonts: FontManager = FontManager()
+        self.leveling: LevelingManager = LevelingManager(bot=self)
+        self.session: aiohttp.ClientSession = aiohttp.ClientSession()
+
+    @staticmethod
+    def _walk_extensions() -> Generator[str, Any, Any]:
         yield from (
             f'bot.extensions.{extension[:-3]}'
             for extension in os.listdir('./bot/extensions')
@@ -43,3 +53,7 @@ class Lambda(_BaseBot):
 
     def run(self) -> None:
         super().run(os.environ['TOKEN'])
+
+    async def close(self) -> None:
+        await self.session.close()
+        await super().close()
