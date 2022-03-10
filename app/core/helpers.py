@@ -71,7 +71,7 @@ async def process_message(ctx: Context, payload: Any) -> discord.Message | None:
     kwargs.setdefault('embeds', [])
     kwargs.setdefault('files', [])
 
-    if not isinstance(payload, Iterable):
+    if not isinstance(payload, (tuple, list, set)):
         payload = [payload]
 
     paginator = None

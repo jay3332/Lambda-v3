@@ -22,6 +22,11 @@ __all__ = (
 )
 
 
+def txt(path: str) -> str:
+    with open(path, 'r') as fp:
+        return fp.read().strip()
+
+
 class VersionInfo(NamedTuple):
     """Represents versioning information.
 
@@ -76,7 +81,7 @@ class DatabaseConfig:
     port: int | None = None
 
     password: str | None = env('DB_PASSWORD')
-    beta_password: str | None = env('DB_BETA_PASSWORD')
+    beta_password: str | None = txt('local_db_password.txt')
 
     resolved_password: str = beta_password if beta else password
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, NamedTuple, TYPE_CHECKING
+from typing import Any, Awaitable, Callable, Iterable, NamedTuple, ParamSpec, TYPE_CHECKING
 
 import discord
 from discord.ext import commands
@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from app.core import Bot
     from app.database import Database
     from app.util.views import AnyUser
+
+    P = ParamSpec('P')
 
 
 @discord.utils.copy_doc(commands.Cog)
@@ -60,13 +62,13 @@ def check_permissions(ctx: Context) -> bool:
     permissions = ctx.command._permissions
 
     other = ctx.channel.permissions_for(ctx.author)
-    missing = [perm for perm, value in other.items() if perm in permissions.user and not value]
+    missing = [perm for perm, value in other if perm in permissions.user and not value]
 
     if missing and not other.administrator:
         raise commands.MissingPermissions(missing)
 
     other = ctx.channel.permissions_for(ctx.me)
-    missing = [perm for perm, value in other.items() if perm in permissions.bot and not value]
+    missing = [perm for perm, value in other if perm in permissions.bot and not value]
 
     if missing and not other.administrator:
         raise commands.BotMissingPermissions(missing)
@@ -76,7 +78,7 @@ def check_permissions(ctx: Context) -> bool:
 
 @discord.utils.copy_doc(commands.Command)
 class Command(commands.Command):
-    def __init__(self, func: Callable[..., Awaitable[Any]], **kwargs: Any) -> None:
+    def __init__(self, func: AsyncCallable[..., Any], **kwargs: Any) -> None:
         self._permissions: PermissionSpec = PermissionSpec.new()
         super().__init__(func, **kwargs)
 
@@ -87,7 +89,7 @@ class Command(commands.Command):
 class GroupCommand(commands.Group, Command):
     @discord.utils.copy_doc(commands.Group.command)
     def command(self, *args: Any, **kwargs: Any) -> Callable[[AsyncCallable[..., Any]], Command]:
-        def decorator(func: Callable[..., Awaitable[Any]]) -> Command:
+        def decorator(func: AsyncCallable[..., Any]) -> Command:
             from app.core.helpers import command
 
             kwargs.setdefault('parent', self)
@@ -99,11 +101,11 @@ class GroupCommand(commands.Group, Command):
 
     @discord.utils.copy_doc(commands.Group.group)
     def group(self, *args: Any, **kwargs: Any) -> Callable[[AsyncCallable[..., Any]], GroupCommand]:
-        def decorator(func: Callable[..., Awaitable[Any]]) -> GroupCommand:
-            from app.core.helpers import group as _group
+        def decorator(func: AsyncCallable[..., Any]) -> GroupCommand:
+            from app.core.helpers import group
 
             kwargs.setdefault('parent', self)
-            result = _group(*args, **kwargs)(func)
+            result = group(*args, **kwargs)(func)
             self.add_command(result)
             return result
 

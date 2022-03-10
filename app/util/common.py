@@ -1,19 +1,15 @@
 from __future__ import annotations
 
-import math
-import random
 import re
-from difflib import SequenceMatcher
-from typing import Any, Callable, Iterator, Optional, TYPE_CHECKING, Type, TypeVar
+from typing import Any, Callable, TYPE_CHECKING, Type, TypeVar
 
 from discord.ext.commands import Converter
-
-from config import Emojis
 
 if TYPE_CHECKING:
     from app.core import Context
 
     T = TypeVar('T')
+    ConstantT = TypeVar('ConstantT', bound='Constant', covariant=True)
 
 __all__ = (
     'setinel',
@@ -30,13 +26,13 @@ PLURALIZE_REGEX: re.Pattern[str] = re.compile(r'(?P<quantity>-?[0-9.,]+) (?P<thi
 
 
 # This exists for type checkers
-class ConstantT:
+class SetinelConstant:
     pass
 
 
 def setinel(name: str, **dunders) -> ConstantT:
     attrs = {f'__{k}__': lambda _: v for k, v in dunders.items()}
-    return type(name, (ConstantT,), attrs)()
+    return type(name, (SetinelConstant,), attrs)()
 
 
 def converter(func: Callable[[Context, str], T]) -> Type[Converter | T]:

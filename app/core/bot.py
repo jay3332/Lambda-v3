@@ -78,24 +78,34 @@ class Bot(commands.Bot):
         await self.wait_until_ready()
         self.dispatch('first_ready')
 
-    def _try_load_extension(self, extension: str) -> None:
-        """Attemps to load an extension. If there is no setup function, a cog lookup is attempted."""
+    # noinspection PyUnresolvedReferences
+    def _load_from_module_spec(self, spec: importlib.machinery.ModuleSpec, key: str) -> None:
+        # An awfully hacky solution and I really don't like it this way.
+        # Maybe I'll come up with a better implementation later.
         try:
-            self.load_extension(extension)
+            super()._load_from_module_spec(spec, key)
         except commands.NoEntryPointError:
-            pass
+            lib = importlib.util.module_from_spec(spec)
+            sys.modules[key] = lib
+
+            try:
+                spec.loader.exec_module(lib)
+            except Exception as exc:
+                del sys.modules[key]
+                raise errors.ExtensionFailed(key, exc) from exc
+
+            predicate = lambda member: member is not Cog and isinstance(member, type) and issubclass(member, Cog)
+            members = inspect.getmembers(lib, predicate=predicate)
+
+            if not members:
+                raise
         else:
             return
 
-        module = importlib.import_module(extension)
-        members = inspect.getmembers(module, lambda member: isinstance(member, Cog))
-
-        if not members:
-            raise
-
         cog = members[0][1]  # (_cls_name, cog), *_other_cogs
-        module.setup = cog.simple_setup
-        self.load_extension(extension)
+        cog.simple_setup(self)
+
+        self._BotBase__extensions[key] = lib
 
     def _load_extensions(self) -> None:
         """Loads all command extensions, including Jishaku."""
@@ -107,7 +117,7 @@ class Bot(commands.Bot):
 
             extension = f'app.extensions.{file[:-3]}'
             try:
-                self._try_load_extension(extension)
+                self.load_extension(extension)
             except Exception as exc:
                 self.log.critical(f'Failed to load extension {extension}: {exc}', exc_info=True)
             else:

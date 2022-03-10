@@ -1,9 +1,14 @@
 from __future__ import annotations
 
-from typing import Any, AsyncIterable, Awaitable, Callable, ParamSpec, TypeAlias, TypeVar, TYPE_CHECKING
+from typing import Any, AsyncGenerator, AsyncIterable, Awaitable, Callable, Literal, ParamSpec, TypeAlias, TypeVar, \
+    TYPE_CHECKING
 
-from discord import Interaction
+from discord import Embed, File, Interaction
 from discord.ext import commands
+from discord.ui import View
+
+from app.util.common import SetinelConstant
+from app.util.pagination import Paginator
 
 if TYPE_CHECKING:
     from inspect import Parameter
@@ -17,15 +22,23 @@ if TYPE_CHECKING:
 
 P = ParamSpec('P')
 R = TypeVar('R')
+ConstantT = TypeVar('ConstantT', bound=SetinelConstant, covariant=True)
 
 
 __all__ = (
     'TypedContext',
     'TypedInteraction',
     'AsyncCallable',
+    'CommandResponse',
+    'OptionalCommandResponse',
 )
 
 AsyncCallable: TypeAlias = Callable[P, Awaitable[R] | AsyncIterable[R]]
+
+CommandResponseFragment: TypeAlias = str | Embed | File | Paginator | View | dict[str, Any] | ConstantT
+SingleCommandResponse: TypeAlias = CommandResponseFragment | tuple[CommandResponseFragment, ...]
+CommandResponse: TypeAlias = SingleCommandResponse | AsyncGenerator[SingleCommandResponse, Any]
+OptionalCommandResponse: TypeAlias = CommandResponse | None
 
 
 class TypedInteraction(Interaction):
@@ -85,5 +98,5 @@ if TYPE_CHECKING:
     class TypedContext(_TypedContext):
         ...
 else:
-    class TypedContext(commands.Context[Bot]):
+    class TypedContext(commands.Context['Bot']):
         interaction: TypedInteraction | None
