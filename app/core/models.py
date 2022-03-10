@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable, Iterable, NamedTuple, ParamSpec, TYPE_CHECKING
+from typing import Any, Awaitable, Callable, NamedTuple, ParamSpec, TYPE_CHECKING
 
 import discord
 from discord.ext import commands
@@ -17,6 +17,14 @@ if TYPE_CHECKING:
     from app.util.views import AnyUser
 
     P = ParamSpec('P')
+
+__all__ = (
+    'Cog',
+    'Command',
+    'GroupCommand',
+    'Context',
+    'PermissionSpec',
+)
 
 
 @discord.utils.copy_doc(commands.Cog)
