@@ -4,4 +4,3 @@ asyncpg
 psutil
 python-dotenv
 tabulate
-uvloop

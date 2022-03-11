@@ -1,8 +1,8 @@
 import asyncio
+from platform import system
 from sys import argv
 
 import asyncpg
-import uvloop
 
 from app.core.bot import Bot
 from app.database.migrations import Migrator
@@ -15,8 +15,15 @@ async def run_migrations() -> None:
 
 
 if __name__ == '__main__':
-    uvloop.install()
-    
+    if system() == 'Linux':
+        try:
+            # noinspection PyUnresolvedReferences
+            import uvloop
+        except ModuleNotFoundError:
+            pass
+        else:
+            uvloop.install()
+
     match argv:
         case [_, 'migrate' | 'm' | 'migration' | 'migrations', *args]:
             match args:
