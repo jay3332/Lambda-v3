@@ -2,6 +2,7 @@ import asyncio
 from sys import argv
 
 import asyncpg
+import uvloop
 
 from app.core.bot import Bot
 from app.database.migrations import Migrator
@@ -14,6 +15,8 @@ async def run_migrations() -> None:
 
 
 if __name__ == '__main__':
+    uvloop.install()
+    
     match argv:
         case [_, 'migrate' | 'm' | 'migration' | 'migrations', *args]:
             match args:
