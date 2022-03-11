@@ -28,7 +28,7 @@ __all__ = (
     'easy_command_callback',
     'command',
     'group',
-    'simple_cooldown',
+    'cooldown',
 )
 
 EDIT  = setinel('EDIT', repr='EDIT')
@@ -226,7 +226,7 @@ def group(
     return result
 
 
-def simple_cooldown(rate: int, per: float, bucket: commands.BucketType = commands.BucketType.user) -> AsyncCallableDecorator:
+def cooldown(rate: int, per: float, bucket: commands.BucketType = commands.BucketType.user) -> AsyncCallableDecorator:
     return commands.cooldown(rate, per, bucket)
 
 
