@@ -47,6 +47,7 @@ class Bot(commands.Bot):
         members=True,
         messages=True,
         message_content=True,
+        presences=True,
         reactions=True,
     )
 

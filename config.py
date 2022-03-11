@@ -64,7 +64,7 @@ description: str = 'A multipurpose bot for Discord'
 
 owner: Collection[int] | int = 414556245178056706
 default_prefix: Collection[str] | str = '>'
-allowed_mentions: AllowedMentions = AllowedMentions(everyone=False, users=True, roles=False)
+allowed_mentions: AllowedMentions = AllowedMentions(everyone=False, users=True, roles=False, replied_user=False)
 
 token: str = env('DISCORD_TOKEN')
 beta_token: str = env('DISCORD_BETA_TOKEN')

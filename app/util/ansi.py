@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 from enum import IntEnum
+from typing import TYPE_CHECKING
 
 from app.util.common import setinel
+
+if TYPE_CHECKING:
+    from app.core import Context
 
 CLEAR = setinel('CLEAR', str='\x1b[0m', repr='<clear>', bool=False)
 
 
 class AnsiColor(IntEnum):
     default = 0
-    black = 30
+    gray = 30
     red = 31
     green = 32
     yellow = 33
@@ -29,11 +33,11 @@ class AnsiBackgroundColor(IntEnum):
     default = 0
     black = 40
     red = 41
-    green = 42
-    yellow = 43
-    blue = 44
-    magenta = 45
-    cyan = 46
+    gray = 42
+    light_gray = 43
+    lighter_gray = 44
+    blurple = 45
+    lightest_gray = 46
     white = 47
 
 
@@ -92,6 +96,11 @@ class AnsiStringBuilder:
         self.buffer += string + (str(CLEAR) if clear else '')
         self._raw += string
         return self
+
+    def newline(self, lines: int = 1) -> None:
+        """Adds a newline to this string."""
+        self.buffer += '\n' * lines
+        self._raw += '\n' * lines
 
     def bold(self, string: str = '', **kwargs: AnsiColor | AnsiBackgroundColor | bool) -> AnsiStringBuilder:
         """Adds and persists bold text."""
@@ -167,6 +176,21 @@ class AnsiStringBuilder:
     @property
     def raw_length(self) -> int:
         return len(self._raw)
+
+    def ensure_codeblock(self) -> AnsiStringBuilder:
+        """Surrounds the string with a codeblock if it's not already surrounded."""
+        if not self.buffer.startswith('```'):
+            self.buffer = '```ansi\n' + self.buffer + '```'
+            self._raw = '```\n' + self.raw + '```'
+
+        return self
+
+    def dynamic(self, ctx: Context) -> str:
+        """Returns the built string only if the user of the given context is not on mobile."""
+        if ctx.author.is_on_mobile():
+            return self.raw
+
+        return self.build()
 
     def __str__(self) -> str:
         return self.build()

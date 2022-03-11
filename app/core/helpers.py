@@ -8,6 +8,7 @@ import discord
 from discord.ext import commands
 
 from app.core.models import Command, GroupCommand
+from app.util.ansi import AnsiStringBuilder
 from app.util.common import setinel
 from app.util.pagination import Paginator
 
@@ -97,6 +98,13 @@ async def process_message(ctx: Context, payload: Any) -> discord.Message | None:
 
         elif isinstance(part, Paginator):
             paginator = part
+
+        elif isinstance(part, AnsiStringBuilder):
+            result = part.ensure_codeblock().dynamic(ctx)
+            if not kwargs.get('content'):
+                kwargs['content'] = result
+            else:
+                kwargs['content'] += '\n' + result
 
         elif isinstance(part, dict):
             kwargs.update(part)
