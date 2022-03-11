@@ -40,6 +40,7 @@ class Bot(commands.Bot):
         db: Database
         session: ClientSession
         startup_timestamp: datetime
+        user_to_member_mapping: dict[int, discord.Member]
 
     # TODO: if guild logging is enabled then Intents.all() may have to be used instead
     INTENTS: Final[ClassVar[discord.Intents]] = discord.Intents(
@@ -139,6 +140,7 @@ class Bot(commands.Bot):
 
         self.db = Database(loop=self.loop)
         self.session = ClientSession()
+        self.user_to_member_mapping = {}
 
         self.loop.create_task(self._dispatch_first_ready())
         self._load_extensions()
@@ -156,6 +158,37 @@ class Bot(commands.Bot):
         jishaku.Flags.HIDE = True
         jishaku.Flags.NO_UNDERSCORE = True
         jishaku.Flags.NO_DM_TRACEBACK = True
+
+    def find_member_from_user(self, user: discord.abc.Snowflake) -> discord.Member | None:
+        """Finds the first member object given a user/object.
+
+        Note that the guild the returned member is associated to will be a random guild.
+        Returns ``None`` if the user is not in any mutual guilds.
+        """
+        if isinstance(user, discord.Member):
+            return user
+
+        if user.id in self.user_to_member_mapping:
+            return self.user_to_member_mapping[user.id]
+
+        for guild in self.guilds:
+            if member := guild.get_member(user.id):
+                self.user_to_member_mapping[user.id] = member
+                return member
+
+        return None  # not necessary but without this line the nesting becomes relatively ugly
+
+    def user_on_mobile(self, user: discord.abc.Snowflake) -> bool | None:
+        """Whether this user object is on mobile.
+
+        If there are no mutual guilds for this user then this will return ``None``.
+        Because ``None`` is a falsy value, this will behave as if it defaults to ``False``.
+        """
+        member = self.find_member_from_user(user)
+        if member is not None:
+            return member.is_on_mobile()
+
+        return None
 
     async def process_commands(self, message: discord.Message, /) -> None:
         if message.author.bot:

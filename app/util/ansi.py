@@ -3,6 +3,8 @@ from __future__ import annotations
 from enum import IntEnum
 from typing import TYPE_CHECKING
 
+from discord import User
+
 from app.util.common import setinel
 
 if TYPE_CHECKING:
@@ -187,7 +189,11 @@ class AnsiStringBuilder:
 
     def dynamic(self, ctx: Context) -> str:
         """Returns the built string only if the user of the given context is not on mobile."""
-        if ctx.author.is_on_mobile():
+        if isinstance(ctx.author, User):
+            if ctx.bot.user_on_mobile(ctx.author):
+                return self.raw
+
+        elif ctx.author.is_on_mobile():
             return self.raw
 
         return self.build()
