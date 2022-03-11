@@ -32,6 +32,9 @@ class GitPullView(UserView):
 
         async with self.ctx.typing():
             for file in self.output.modified:
+                if not file.endswith('.py'):
+                    continue
+
                 module = file.replace('/', '.').replace('.py', '')  # Super unreliable but it gets the job done
 
                 if module.startswith('app.extensions'):
@@ -114,6 +117,9 @@ class Admin(Cog):
                 output = self._parse_git_output(stdout)
                 raw = f'```ansi\n{stdout}\n\n{stderr}```'
 
+                if len(raw) > 2000:
+                    raw = 'Output too long to display.'
+
         if not output.modified:
             color = Colors.warning if output.summary.startswith('N') else Colors.error
         else:
@@ -121,6 +127,11 @@ class Admin(Cog):
 
         embed = discord.Embed(color=color, description=raw, timestamp=ctx.now)
         embed.add_field(name='Summary', value=output.summary, inline=False)
-        embed.add_field(name='Modified Files', value='\n'.join(output.modified) if output.modified else 'None')
+
+        modified = '\n'.join(output.modified[:16])
+        if len(output.modified) > 16:
+            modified += f'\n*{len(output.modified) - 16} more...*'
+
+        embed.add_field(name='Modified Files', value=modified if output.modified else 'None')
 
         return embed, GitPullView(ctx, output), REPLY
