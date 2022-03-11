@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from app.core import Context
 
     T = TypeVar('T')
+    KwargT = TypeVar('KwargT')
     ConstantT = TypeVar('ConstantT', bound='Constant', covariant=True)
 
 __all__ = (
@@ -30,13 +31,22 @@ class SetinelConstant:
     pass
 
 
-def setinel(name: str, **dunders) -> ConstantT:
-    attrs = {f'__{k}__': lambda _: v for k, v in dunders.items()}
+def _create_setinel_callback(v: KwargT) -> Callable[[ConstantT], KwargT]:
+    def wrapper(_self: ConstantT) -> KwargT:
+        return v
+
+    return wrapper
+
+
+def setinel(name: str, **dunders: KwargT) -> ConstantT:  # "setinel" is a misleading name for this, maybe I should rename it
+    """Creates a constant singleton object."""
+    attrs = {f'__{k}__': _create_setinel_callback(v) for k, v in dunders.items()}
     return type(name, (SetinelConstant,), attrs)()
 
 
 def converter(func: Callable[[Context, str], T]) -> Type[Converter | T]:
-    class Wrapper(Converter):
+    """Creates a :class:`discord.ext.commands.Converter` that calls the decorated function on the input."""
+    class Wrapper(Converter[T]):
         async def convert(self, ctx: Context, argument: str) -> T:
             return await func(ctx, argument)
 
@@ -69,7 +79,7 @@ def humanize_list(li: list[Any]) -> str:
     return ", ".join(li[:-1]) + f", and {li[-1]}"
 
 
-def humanize_small_duration(seconds: float, /) -> str:
+def humanize_small_duration(seconds: float) -> str:
     """Turns a very small duration into a human-readable string."""
     units = ('ms', 'μs', 'ns', 'ps')
 
@@ -85,7 +95,7 @@ def humanize_small_duration(seconds: float, /) -> str:
     return "<1 ps"
 
 
-def humanize_duration(seconds, depth: int = 3):
+def humanize_duration(seconds: float, depth: int = 3) -> str:
     """Formats a duration (in seconds) into one that is human-readable."""
     if seconds < 1:
         return '<1 second'
