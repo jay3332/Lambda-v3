@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 import inspect
 import logging
@@ -201,6 +202,10 @@ class Bot(commands.Bot):
         """Closes this bot and it's aiohttp ClientSession."""
         await self.session.close()
         await super().close()
+
+        pending = asyncio.all_tasks()
+        # Wait for all tasks to complete. This usually allows for a graceful shutdown of the bot.
+        await asyncio.gather(*pending)
 
     def run(self) -> None:
         """Runs the bot."""
