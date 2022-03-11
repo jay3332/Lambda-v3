@@ -22,9 +22,12 @@ __all__ = (
 )
 
 
-def txt(path: str) -> str:
-    with open(path, 'r') as fp:
-        return fp.read().strip()
+def txt(path: str) -> str | None:
+    try:
+        with open(path, 'r') as fp:
+            return fp.read().strip()
+    except FileNotFoundError:
+        return
 
 
 class VersionInfo(NamedTuple):
