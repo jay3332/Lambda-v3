@@ -13,7 +13,7 @@ import jishaku
 from aiohttp import ClientSession
 from discord.ext import commands
 
-from app.core.models import Cog, Context
+from app.core.models import Cog, Context, PermissionSpec
 from app.database import Database
 from config import allowed_mentions, default_prefix, description, name as bot_name, owner, resolved_token, version
 
@@ -220,15 +220,42 @@ class Bot(commands.Bot):
             return
 
         if isinstance(error, commands.BadArgument):
-            return await ctx.send(error)
+            return await ctx.send(error, reference=ctx.message, delete_after=15)
 
         if isinstance(error, commands.CommandOnCooldown):
             if not ctx.guild and ctx.channel.permissions_for(ctx.me).add_reactions:
                 return await ctx.message.add_reaction('\U000023f3')
 
-            return await ctx.reply('You are currently on cooldown.')
+            return await ctx.send('You are currently on cooldown.', reference=ctx.message, delete_after=15)
+
+        if isinstance(error, commands.MaxConcurrencyReached):
+            return await ctx.send(error, reference=ctx.message, delete_after=15)
+
+        if isinstance(error, (commands.MissingPermissions, commands.BotMissingPermissions)):
+            if isinstance(error, commands.MissingPermissions):
+                message = 'You are missing the following permissions required to run this command:'
+            else:
+                message = 'I am missing the following permissions required to execute this command:'
+
+            missing = '\n'.join(f'- {PermissionSpec.permission_as_str(perm)}' for perm in error.missing_permissions)
+            message += '\n' + missing
+
+            permissions = ctx.channel.permissions_for(ctx.me)
+            if ctx.guild and permissions.send_messages and permissions.read_message_history:
+                await ctx.send(message, reference=ctx.message)
+                return
+
+            if permissions.add_reactions:
+                await ctx.message.add_reaction('\U000026a0')
+
+            try:
+                await ctx.author.send(message)
+            except discord.Forbidden:
+                pass
 
         self.log.critical(f'Uncaught error occured when trying to invoke {ctx.command.name}: {error}', exc_info=error)
+
+        await ctx.send(f'panic!({error})', reference=ctx.message)
         raise error
 
     async def close(self) -> None:
@@ -238,7 +265,12 @@ class Bot(commands.Bot):
 
         pending = asyncio.all_tasks()
         # Wait for all tasks to complete. This usually allows for a graceful shutdown of the bot.
-        await asyncio.gather(*pending)
+        try:
+            await asyncio.wait_for(asyncio.gather(*pending), timeout=0.5)
+        except asyncio.TimeoutError:
+            # If the tasks take too long to complete, cancel them.
+            for task in pending:
+                task.cancel()
 
     def run(self) -> None:
         """Runs the bot."""

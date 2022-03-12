@@ -53,9 +53,10 @@ class PermissionSpec(NamedTuple):
         """Creates a new permission spec.
 
         Users default to requiring no permissions.
-        Bots default to requiring Send Messages, Embed Links, and External Emojis permissions.
+        Bots default to requiring Read Message History, View Channel, Send Messages, Embed Links, and External Emojis permissions.
         """
-        return cls(user=set(), bot={'send_messages', 'embed_links', 'use_external_emojis'})
+        required = {'read_message_history', 'view_channel', 'send_messages', 'embed_links', 'use_external_emojis'}
+        return cls(user=set(), bot=required)
 
     @staticmethod
     def permission_as_str(permission: str) -> str:
