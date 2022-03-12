@@ -11,6 +11,8 @@ __all__ = (
 
 
 class Timer:
+    __slots__ = ('start_time', 'end_time')
+
     def __init__(self) -> None:
         self.start_time: float | None = None
         self.end_time: float | None = None

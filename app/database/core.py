@@ -17,6 +17,8 @@ __all__ = (
 
 
 class _Database:
+    __slots__ = ('_internal_pool', 'loop')
+
     _internal_pool: asyncpg.Pool
 
     def __init__(self, *, loop: asyncio.AbstractEventLoop = None) -> None:

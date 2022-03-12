@@ -83,6 +83,8 @@ def ansi_identifier(
 class AnsiStringBuilder:
     """Aids in building an ANSI string."""
 
+    __slots__ = ('buffer', '_raw', '_persisted_kwargs')
+
     def __init__(self, string: str = '') -> None:
         self.buffer: str = string
         self._raw: str = string

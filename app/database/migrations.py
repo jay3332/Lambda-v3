@@ -8,6 +8,8 @@ from asyncpg import Connection
 class Migrator:
     """A system that manages and handles database migrations."""
 
+    __slots__ = ('_connection',)
+
     def __init__(self, connection: Connection) -> None:
         self._connection: Connection = connection
 
