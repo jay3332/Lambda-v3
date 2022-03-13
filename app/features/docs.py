@@ -12,6 +12,7 @@ import discord
 from aiohttp import ClientTimeout
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString, Tag
+from discord.ext.commands import BadArgument
 
 from app.core.helpers import BAD_ARGUMENT
 from app.util import AnsiColor, AnsiStringBuilder, UserView
@@ -44,7 +45,17 @@ class DocumentationSource(NamedTuple):
     @classmethod
     async def convert(cls, _ctx: Context, argument: str) -> DocumentationSource:
         """Converts a string to a documentation source."""
-        return DocumentationManager.SOURCES[argument.lower()]
+        argument = argument.lower()
+        try:
+            return DocumentationManager.SOURCES[argument]
+        except KeyError:
+            if result := discord.utils.find(
+                lambda source: argument in source.aliases,
+                DocumentationManager.SOURCES.values(),
+            ):
+                return result
+
+            raise BadArgument(f"Unknown documentation source: {argument!r}")
 
 
 class ZlibStreamView:
