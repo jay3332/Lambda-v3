@@ -190,7 +190,7 @@ class SphinxInventory:
                 key = (
                     key
                     .replace('discord.ext.commands.', 'commands.')
-                    .replace('discord.commands.', 'commands.')
+                    .replace('discord.commands.', 'commands.')  # Command-related listeners
                     .replace('discord.ext.tasks', 'tasks.')
                 )
 
@@ -300,7 +300,7 @@ class SphinxInventory:
             elif child.name in ('b', 'strong'):
                 parts.append(f'**{parse(child)}**')
 
-            elif child.name == ('i', 'em'):
+            elif child.name in ('i', 'em'):
                 parts.append(f'*{parse(child)}*')
 
             elif child.name == 'u':
@@ -409,7 +409,11 @@ class SphinxInventory:
         signature = soup.find('dt', id=key)
         parent = signature.parent
 
-        embed = discord.Embed(color=Colors.primary, title=name, url=url)
+        embed = discord.Embed(
+            color=Colors.primary,
+            title=discord.utils.escape_markdown(name),
+            url=url,
+        )
         embed.description = await self._parse_tag_async(parent.find('dd'), embed, page)  # type: ignore
         embed.description = re.sub(r'\n{3,}', '\n\n', embed.description)  # Weird fix for odd formatting issues
         if len(embed) > 6000:
