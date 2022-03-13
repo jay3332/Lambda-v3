@@ -1,4 +1,4 @@
-from app.core import BAD_ARGUMENT, Cog, Context, REPLY, command
+from app.core import BAD_ARGUMENT, Cog, Context, REPLY, command, group
 from app.features.docs import DocumentationManager, DocumentationSource
 from app.util.types import CommandResponse
 
@@ -9,7 +9,7 @@ class Developer(Cog):
     def __setup__(self) -> None:
         self.docs: DocumentationManager = DocumentationManager(self.bot)
 
-    @command(aliases={'doc-search', 'rtfd'})
+    @group(aliases={'doc-search', 'rtfd'})
     async def rtfm(self, ctx: Context, source: DocumentationSource | None = None, *, query: str = None) -> CommandResponse:
         """Search documentation nodes given a query.
 
@@ -22,6 +22,11 @@ class Developer(Cog):
             return source.url, REPLY
 
         return await self.docs.execute_rtfm(ctx, source=source, query=query), REPLY
+
+    @rtfm.command()
+    async def sources(self, ctx: Context) -> CommandResponse:
+        """View a list of available documentation sources."""
+        return '`' + '` `'.join(source.key for source in self.docs.SOURCES.values()) + '`', REPLY
 
     @command(aliases={'doc', 'documentation'})
     async def docs(self, ctx: Context, source: DocumentationSource | None = None, *, node: str) -> CommandResponse | None:

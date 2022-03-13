@@ -15,7 +15,7 @@ from bs4.element import NavigableString, Tag
 from discord.ext.commands import BadArgument
 
 from app.core.helpers import BAD_ARGUMENT
-from app.util import AnsiColor, AnsiStringBuilder, UserView
+from app.util import AnsiColor, AnsiStringBuilder, UserView, cutoff
 from app.util.common import executor_function, wrap_exceptions
 from app.util.pagination import LineBasedFormatter, Paginator
 from config import Colors
@@ -46,16 +46,18 @@ class DocumentationSource(NamedTuple):
     async def convert(cls, _ctx: Context, argument: str) -> DocumentationSource:
         """Converts a string to a documentation source."""
         argument = argument.lower()
+        sources = DocumentationManager.SOURCES
         try:
-            return DocumentationManager.SOURCES[argument]
+            return sources[argument]
         except KeyError:
             if result := discord.utils.find(
                 lambda source: argument in source.aliases,
-                DocumentationManager.SOURCES.values(),
+                sources.values(),
             ):
                 return result
 
-            raise BadArgument(f"Unknown documentation source: {argument!r}")
+            available = '`' + '` `'.join(source.key for source in sources.values()) + '`'
+            raise BadArgument(f"Unknown documentation source: {argument!r}\n\nAvailable sources: {available}")
 
 
 class ZlibStreamView:
@@ -345,7 +347,7 @@ class SphinxInventory:
                 for dt, dd in zip(child.find_all('dt'), child.find_all('dd')):
                     dt, dd = parse(dt), parse(dd)
                     if dt and dd:
-                        embed.add_field(name=dt, value=dd, inline=False)
+                        embed.add_field(name=dt, value=cutoff(dd, 1024, exact=True), inline=False)
                     elif not dd:
                         embed.add_field(name=dt, value='No content provided.', inline=False)
 
