@@ -187,7 +187,12 @@ class SphinxInventory:
             prefix = f'{subdirective}:' if domain == 'std' else ''
 
             if self.source.key == 'discord.py':
-                key = key.replace('discord.ext.commands.', 'commands.')
+                key = (
+                    key
+                    .replace('discord.ext.commands.', 'commands.')
+                    .replace('discord.commands.', 'commands.')
+                    .replace('discord.ext.tasks', 'tasks.')
+                )
 
             key = prefix + key
             self.inventory[prefix + key] = self.source.url + '/' + location
