@@ -6,22 +6,27 @@ from enum import Enum
 from functools import partial
 from io import BytesIO
 from urllib.parse import urlparse
-from typing import Any, AsyncGenerator, ClassVar, Collection, Final, Iterable, NamedTuple, TYPE_CHECKING
+from typing import Any, AsyncGenerator, ClassVar, Collection, Final, Iterable, Iterator, NamedTuple, TYPE_CHECKING
 
 import discord
 from aiohttp import ClientTimeout
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString, Tag
 
-from app.util import AnsiColor, AnsiStringBuilder
+from app.core.helpers import BAD_ARGUMENT
+from app.util import AnsiColor, AnsiStringBuilder, UserView
 from app.util.common import executor_function, wrap_exceptions
+from app.util.pagination import LineBasedFormatter, Paginator
 from config import Colors
 
 if TYPE_CHECKING:
     from asyncio import AbstractEventLoop
     from logging import Logger
+
     from aiohttp import ClientSession
-    from app.core import Bot
+
+    from app.core import Bot, Context
+    from app.util.types import CommandResponse
 
 
 class DocumentationType(Enum):
@@ -35,6 +40,11 @@ class DocumentationSource(NamedTuple):
     url: str
     aliases: Collection[str] = ()
     type: DocumentationType = DocumentationType.sphinx
+
+    @classmethod
+    async def convert(cls, _ctx: Context, argument: str) -> DocumentationSource:
+        """Converts a string to a documentation source."""
+        return DocumentationManager.SOURCES[argument.lower()]
 
 
 class ZlibStreamView:
@@ -170,6 +180,21 @@ class SphinxInventory:
             self.inventory[prefix + key] = self.source.url + '/' + location
             self._key_lookup[key] = name
 
+    def search(self, query: str) -> Iterator[tuple[str, str]]:
+        """Searches for entries for the given query.
+
+        Returns a generator of tuples (name, url).
+        """
+        matches = []
+        regex = re.compile('.*?'.join(map(re.escape, query)), flags=re.IGNORECASE)
+
+        for key, url in self.inventory.items():
+            if match := regex.search(key):
+                matches.append((len(match.group()), match.start(), (key, url)))
+
+        for *_, match in sorted(matches):
+            yield match
+
     @staticmethod
     def _get_base_url(url: str) -> str:
         """Gets the base url for the given url, stripping of query parameters and fragments"""
@@ -282,10 +307,11 @@ class SphinxInventory:
                     if first is None:
                         continue
 
-                    title = parse(first)
-                    content = parse(first.next_sibling)
+                    title = parse(first).strip()
+                    content = parse(first.next_sibling).strip()
 
-                    embed.add_field(name=title, value=content, inline=False)
+                    if title and content:
+                        embed.add_field(name=title, value=content, inline=False)
                     continue
 
                 elif pending_rubric and 'highlight-python3' in child.attrs['class']:
@@ -301,11 +327,16 @@ class SphinxInventory:
 
                     chunks.append(f'**`{operation}`** - {description}')
 
-                embed.add_field(name='Supported Operations', value='\n'.join(chunks), inline=False)
+                if chunks:
+                    embed.add_field(name='Supported Operations', value='\n'.join(chunks), inline=False)
 
             elif child.name == 'dl':
                 for dt, dd in zip(child.find_all('dt'), child.find_all('dd')):
-                    embed.add_field(name=parse(dt), value=parse(dd), inline=False)
+                    dt, dd = parse(dt), parse(dd)
+                    if dt and dd:
+                        embed.add_field(name=dt, value=dd, inline=False)
+                    elif not dd:
+                        embed.add_field(name=dt, value='No content provided.', inline=False)
 
         return ''.join(parts)
 
@@ -370,6 +401,64 @@ class SphinxInventory:
         return result
 
 
+class RTFMDocumentationSelect(discord.ui.Select):
+    def __init__(self, ctx: Context, inventory: SphinxInventory, matches: list[tuple[str, str]]) -> None:
+        super().__init__(
+            placeholder='View documentation for...',
+            options=[
+                discord.SelectOption(label=name, value=name) for name, _ in matches
+            ],
+        )
+        self.ctx: Context = ctx
+        self.inventory: SphinxInventory = inventory
+
+    @staticmethod
+    def form_embed(ctx: Context, entry: SphinxDocumentationEntry) -> discord.Embed:
+        embed = entry.embed.copy()
+        if entry.signature:
+            embed.description = entry.signature.ensure_codeblock().dynamic(ctx) + '\n' + embed.description
+
+        embed.timestamp = ctx.now
+        return embed
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        name = self.values[0]
+        if name not in self.inventory.entries:
+            await interaction.response.defer()
+
+        async with self.ctx.typing():
+            entry = await self.inventory.get_entry(name)
+
+        embed = self.form_embed(self.ctx, entry)
+        await interaction.edit_original_message(embed=embed)
+
+
+class RelatedEntriesSelect(discord.ui.Select):
+    def __init__(self, ctx: Context, inventory: SphinxInventory, name: str) -> None:
+        parent = name.rpartition('.')[0]
+        super().__init__(
+            placeholder='View documentation for...',
+            options=[
+                discord.SelectOption(label=name, value=name)
+                for name in inventory.inventory
+                if name.startswith(parent)
+            ][:25],
+        )
+        self.ctx: Context = ctx
+        self.inventory: SphinxInventory = inventory
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        name = self.values[0]
+        if name not in self.inventory.entries:
+            await interaction.response.defer()
+
+        async with self.ctx.typing():
+            entry = await self.inventory.get_entry(name)
+
+        embed = RTFMDocumentationSelect.form_embed(self.ctx, entry)
+        await interaction.edit_original_message(embed=embed)
+
+
 class DocumentationManager:
     """Stores and manages documentation search and RTFM requests."""
 
@@ -390,3 +479,69 @@ class DocumentationManager:
 
     def __init__(self, bot: Bot) -> None:
         self.bot: Bot = bot
+        self.sphinx_inventories: dict[str, SphinxInventory] = {}
+
+    async def fetch_sphinx_inventory(self, key: str) -> SphinxInventory:
+        """Fetches the Sphinx inventory for the given key."""
+        if key in self.sphinx_inventories:
+            return self.sphinx_inventories[key]
+
+        source = self.SOURCES[key]
+        self.sphinx_inventories[key] = inv = SphinxInventory(self.bot, source)
+
+        await inv.build()
+        return inv
+
+    async def _execute_sphinx_rtfm(self, ctx: Context, source: DocumentationSource, query: str) -> CommandResponse:
+        inv = await self.fetch_sphinx_inventory(source.key)
+        matches = list(inv.search(query=query))
+
+        entries = [
+            f'\u2022 [**{discord.utils.escape_markdown(name)}**]({url})' for name, url in matches
+        ]
+        if not entries:
+            return 'No results found.'
+
+        count = len(entries)
+        embed = discord.Embed(color=Colors.primary, title=f'RTFM: **{source.name}**', timestamp=ctx.now)
+
+        es = '' if count == 1 else 'es'
+        embed.set_author(name=f'{count:,} match{es}')
+
+        return Paginator(ctx, LineBasedFormatter(embed, entries), other_components=[
+            RTFMDocumentationSelect(ctx, inv, matches[:25])
+        ])
+
+    async def _execute_sphinx_doc(self, ctx: Context, source: DocumentationSource, name: str) -> CommandResponse:
+        async with ctx.typing():
+            inv = await self.fetch_sphinx_inventory(source.key)
+            if name not in inv.inventory:
+                try:
+                    name = next(inv.search(query=name))
+                except StopIteration:
+                    return BAD_ARGUMENT
+                else:
+                    name = name[0]
+
+            entry = await inv.get_entry(name)
+
+        view = UserView(ctx.author)
+        view.add_item(RelatedEntriesSelect(ctx, inv, name))
+
+        embed = RTFMDocumentationSelect.form_embed(ctx, entry)
+        return embed, view
+
+    async def execute_rtfm(self, ctx: Context, *, source: DocumentationSource, query: str) -> CommandResponse:
+        """Sends a list of documentation nodes for the given query."""
+        async with ctx.typing():
+            if source.type is DocumentationType.sphinx:
+                return await self._execute_sphinx_rtfm(ctx, source, query)
+
+        return 'Invalid source on our side, sorry.'
+
+    async def execute_doc(self, ctx: Context, *, source: DocumentationSource, name: str) -> CommandResponse:
+        """Sends documentation for the given node name."""
+        if source.type is DocumentationType.sphinx:
+            return await self._execute_sphinx_doc(ctx, source, name)
+
+        return 'Invalid source on our side, sorry.'
