@@ -193,11 +193,11 @@ class AnsiStringBuilder:
     def raw_length(self) -> int:
         return len(self._raw)
 
-    def ensure_codeblock(self) -> AnsiStringBuilder:
+    def ensure_codeblock(self, *, fallback: str = '') -> AnsiStringBuilder:
         """Surrounds the string with a codeblock if it's not already surrounded."""
         if not self.buffer.startswith('```'):
             self.buffer = '```ansi\n' + self.buffer + '```'
-            self._raw = '```\n' + self.raw + '```'
+            self._raw = f'```{fallback}\n' + self.raw + '```'
 
         return self
 

@@ -427,7 +427,7 @@ class RTFMDocumentationSelect(discord.ui.Select):
     def form_embed(ctx: Context, entry: SphinxDocumentationEntry) -> discord.Embed:
         embed = entry.embed.copy()
         if entry.signature:
-            embed.description = entry.signature.ensure_codeblock().dynamic(ctx) + '\n' + embed.description
+            embed.description = entry.signature.ensure_codeblock(fallback='py').dynamic(ctx) + '\n' + embed.description
 
         embed.timestamp = ctx.now
         return embed
@@ -446,7 +446,11 @@ class RTFMDocumentationSelect(discord.ui.Select):
 
 class RelatedEntriesSelect(discord.ui.Select):
     def __init__(self, ctx: Context, inventory: SphinxInventory, name: str) -> None:
-        parent = name.rpartition('.')[0]
+        parent = name
+        if self._count_matches(parent, inventory) <= 1:
+            # Probably a specific attribute or method, search through the parent instead.
+            parent = name.rpartition('.')[0]
+
         super().__init__(
             placeholder='View documentation for...',
             options=[
@@ -457,6 +461,10 @@ class RelatedEntriesSelect(discord.ui.Select):
         )
         self.ctx: Context = ctx
         self.inventory: SphinxInventory = inventory
+
+    @staticmethod
+    def _count_matches(parent: str, inventory: SphinxInventory) -> int:
+        return sum(name.startswith(parent) for name in inventory.inventory)
 
     async def callback(self, interaction: discord.Interaction) -> None:
         name = self.values[0]
