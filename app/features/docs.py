@@ -406,6 +406,10 @@ class SphinxInventory:
 
         embed = discord.Embed(color=Colors.primary, title=name, url=url)
         embed.description = await self._parse_tag_async(parent.find('dd'), embed, page)  # type: ignore
+        embed.description = re.sub(r'\n{3,}', '\n\n', embed.description)  # Weird fix for odd formatting issues
+        if len(embed) > 6000:
+            embed.description = cutoff(embed.description, 2048)  # Last resort if embed length is still too long
+
         embed.set_author(name=f'{self.source.name} Documentation')
 
         signature = signature and self._parse_signature(signature)
@@ -495,6 +499,69 @@ class DocumentationManager:
             name='Python 3',
             url='https://docs.python.org/3',
             aliases=('py', 'python3', 'python-3', 'py3'),
+        ),
+        'pillow': DocumentationSource(
+            key='pillow',
+            name='Pillow',
+            url='https://pillow.readthedocs.io/en/stable',
+            aliases=('pil',)
+        ),
+        'aiohttp': DocumentationSource(
+            key='aiohttp',
+            name='aiohttp',
+            url='https://docs.aiohttp.org/en/stable',
+            aliases=('ahttp',),
+        ),
+        'asyncpg': DocumentationSource(
+            key='asyncpg',
+            name='asyncpg',
+            url='https://magicstack.github.io/asyncpg/current',
+            aliases=('apg',)
+        ),
+        'wand': DocumentationSource(
+            key='wand',
+            name='Wand',
+            url='https://wand-py.readthedocs.io/en/latest',
+            aliases=('wand-py',),
+        ),
+        'numpy': DocumentationSource(
+            key='numpy',
+            name='NumPy',
+            url='https://numpy.org/doc/stable',
+            aliases=('np',),
+        ),
+        'sympy': DocumentationSource(
+            key='sympy',
+            name='SymPy',
+            url='https://docs.sympy.org/latest',
+        ),
+        'matplotlib': DocumentationSource(
+            key='matplotlib',
+            name='Matplotlib',
+            url='https://matplotlib.org/stable',
+            aliases=('mpl',),
+        ),
+        'pygame': DocumentationSource(
+            key='pygame',
+            name='PyGame',
+            url='https://www.pygame.org/docs',
+        ),
+        'opencv': DocumentationSource(
+            key='opencv',
+            name='OpenCV',
+            url='https://docs.opencv.org/2.4.13.7',
+            aliases=('cv', 'cv2', 'opencv', 'opencv-python'),
+        ),
+        'selenium': DocumentationSource(
+            key='selenium',
+            name='Selenium',
+            url='https://selenium-python.readthedocs.io/en/latest',
+            aliases=('selenium-python',),
+        ),
+        'requests': DocumentationSource(
+            key='requests',
+            name='Requests',
+            url='https://docs.python-requests.org/en/master',
         ),
     }
 
