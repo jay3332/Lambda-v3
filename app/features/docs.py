@@ -191,7 +191,7 @@ class SphinxInventory:
                     key
                     .replace('discord.ext.commands.', 'commands.')
                     .replace('discord.commands.', 'commands.')  # Command-related listeners
-                    .replace('discord.ext.tasks', 'tasks.')
+                    .replace('discord.ext.tasks.', 'tasks.')
                 )
 
             key = prefix + key
