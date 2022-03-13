@@ -214,7 +214,7 @@ class SphinxInventory:
 
             if child.name == 'div':
                 class_list = child.attrs.get('class', ())
-                if 'admonition' in class_list or 'operations' in class_list:
+                if 'admonition' in class_list or 'operations' in class_list or 'highlight-python3' in class_list:
                     yield child
                     continue
 
@@ -232,12 +232,17 @@ class SphinxInventory:
 
         parts = []
         parse = partial(self._parse_tag, embed=embed, page=page)
+        pending_rubric = None
 
         for child in self._walk_relevant_children(tag):
             if isinstance(child, NavigableString):
                 parts.append(str(child))
 
             elif child.name == 'p':
+                if 'rubric' in child.attrs.get('class', ()):
+                    pending_rubric = child.text.strip()
+                    continue
+
                 parts.append(parse(child))
 
             elif child.name == 'a':
@@ -281,6 +286,12 @@ class SphinxInventory:
                     content = parse(first.next_sibling)
 
                     embed.add_field(name=title, value=content, inline=False)
+                    continue
+
+                elif pending_rubric and 'highlight-python3' in child.attrs['class']:
+                    code = child.text
+                    embed.add_field(name=pending_rubric, value=f'```py\n{code}```', inline=False)
+                    pending_rubric = None
                     continue
 
                 chunks = []
