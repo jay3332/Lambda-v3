@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import re
-from typing import Any, Callable, TYPE_CHECKING, Type, TypeVar
+from functools import wraps
+from inspect import iscoroutinefunction
+from typing import Any, Awaitable, Callable, ParamSpec, TYPE_CHECKING, Type, TypeVar
 
 from discord.ext.commands import Converter
 
@@ -11,6 +14,9 @@ if TYPE_CHECKING:
     T = TypeVar('T')
     KwargT = TypeVar('KwargT')
     ConstantT = TypeVar('ConstantT', bound='Constant', covariant=True)
+
+    P = ParamSpec('P')
+    R = TypeVar('R')
 
 __all__ = (
     'setinel',
@@ -114,3 +120,44 @@ def humanize_duration(seconds: float, depth: int = 3) -> str:
 
     as_list = [f"{quantity} {unit}{'s' if quantity != 1 else ''}" for quantity, unit in items if quantity > 0]
     return humanize_list(as_list[:depth])
+
+
+def _wrap_exceptions_sync(func: Callable[P, R], exc_type: Type[BaseException]) -> Callable[P, R]:
+    @wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        try:
+            return func(*args, **kwargs)
+        except Exception as exc:
+            raise exc_type(f'{exc.__class__.__name__}: {exc}') from exc
+
+    return wrapper
+
+
+def _wrap_exceptions_async(func: Callable[P, Awaitable[R]], exc_type: Type[BaseException]) -> Callable[P, Awaitable[R]]:
+    @wraps(func)
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        try:
+            return await func(*args, **kwargs)
+        except Exception as exc:
+            raise exc_type(f'{exc.__class__.__name__}: {exc}') from exc
+
+    return wrapper
+
+
+def wrap_exceptions(exc_type: Type[BaseException]) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        if iscoroutinefunction(func):
+            return _wrap_exceptions_async(func, exc_type)
+
+        return _wrap_exceptions_sync(func, exc_type)
+
+    return decorator
+
+
+def executor_function(func: Callable[P, R]) -> Callable[P, Awaitable[R]]:
+    """Runs the decorated function in an executor"""
+    @wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> Awaitable[R]:
+        return asyncio.to_thread(func, *args, **kwargs)
+
+    return wrapper

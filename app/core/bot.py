@@ -241,11 +241,11 @@ class Bot(commands.Bot):
             message += '\n' + missing
 
             permissions = ctx.channel.permissions_for(ctx.me)
-            if ctx.guild and permissions.send_messages and permissions.read_message_history:
+            if ctx.guild and (permissions.administrator or permissions.send_messages and permissions.read_message_history):
                 await ctx.send(message, reference=ctx.message)
                 return
 
-            if permissions.add_reactions:
+            if permissions.administrator or permissions.add_reactions:
                 await ctx.message.add_reaction('\U000026a0')
 
             try:

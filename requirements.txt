@@ -1,6 +1,8 @@
 git+https://github.com/Rapptz/discord.py
 git+https://github.com/Gorialis/jishaku
 asyncpg
+beautifulsoup4
+lxml
 psutil
 python-dotenv
 tabulate

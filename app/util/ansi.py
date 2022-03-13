@@ -101,6 +101,18 @@ class AnsiStringBuilder:
         self._raw += string
         return self
 
+    def extend(self, other: AnsiStringBuilder) -> AnsiStringBuilder:
+        """Extends this string with another."""
+        self.buffer += other.buffer
+        self._raw += other._raw
+        return self
+
+    def strip(self) -> AnsiStringBuilder:
+        """Strips trailing whitespace from the string."""
+        self.buffer = self.buffer.strip()
+        self._raw = self._raw.strip()
+        return self
+
     def newline(self, lines: int = 1) -> None:
         """Adds a newline to this string."""
         self.buffer += '\n' * lines
