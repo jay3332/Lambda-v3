@@ -349,7 +349,7 @@ class SphinxInventory:
                     continue
 
                 elif 'highlight-default' in child.attrs['class']:
-                    parts.append(f'\n```py\n{child.text}```\n')
+                    parts.append(f'```py\n{child.text}```')
                     continue
 
                 chunks = []
