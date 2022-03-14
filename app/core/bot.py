@@ -253,6 +253,8 @@ class Bot(commands.Bot):
             except discord.Forbidden:
                 pass
 
+            return
+
         self.log.critical(f'Uncaught error occured when trying to invoke {ctx.command.name}: {error}', exc_info=error)
 
         await ctx.send(f'panic!({error})', reference=ctx.message)
