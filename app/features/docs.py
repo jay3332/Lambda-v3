@@ -106,6 +106,14 @@ class SphinxDocumentationEntry(NamedTuple):
 class IndexingFailure(Exception):
     """Raised when an error occurs during indexing."""
 
+    def __init__(self, inner: BaseException | str) -> None:
+        if isinstance(inner, str):
+            super().__init__(inner)
+        else:
+            super().__init__(f'{inner.__class__.__name__}: {inner}')
+
+        self.original: BaseException | str = inner
+
 
 class SphinxInventory:
     """Stores an inventory for Sphinx-based documentation."""
@@ -257,7 +265,9 @@ class SphinxInventory:
 
             if child.name == 'div':
                 class_list = child.attrs.get('class', ())
-                if 'admonition' in class_list or 'operations' in class_list or 'highlight-python3' in class_list:
+                valid = 'admonition', 'operations', 'highlight-python3', 'highlight-default'
+
+                if any(c in class_list for c in valid):
                     yield child
                     continue
 
@@ -336,6 +346,10 @@ class SphinxInventory:
                     code = child.text
                     embed.add_field(name=pending_rubric, value=f'```py\n{code}```', inline=False)
                     pending_rubric = None
+                    continue
+
+                elif 'highlight-default' in child.attrs['class']:
+                    parts.append(f'\n```py\n{child.text}```\n')
                     continue
 
                 chunks = []
@@ -612,15 +626,22 @@ class DocumentationManager:
     async def _execute_sphinx_doc(self, ctx: Context, source: DocumentationSource, name: str) -> CommandResponse:
         async with ctx.typing():
             inv = await self.fetch_sphinx_inventory(source.key)
-            if name not in inv.inventory:
-                try:
-                    name = next(inv.search(query=name))
-                except StopIteration:
-                    return BAD_ARGUMENT
-                else:
-                    name = name[0]
+            if name in inv.inventory:
+                entry = await inv.get_entry(name)
+            else:
+                for name, _ in inv.search(query=name):
+                    try:
+                        entry = await inv.get_entry(name)
+                    except IndexingFailure as exc:
+                        exc = exc.original
 
-            entry = await inv.get_entry(name)
+                        if not isinstance(exc, KeyError):
+                            raise
+                    else:
+                        break
+                else:
+                    # If we went through the search results without breaking, then no results worked.
+                    return BAD_ARGUMENT
 
         view = UserView(ctx.author)
         view.add_item(RelatedEntriesSelect(ctx, inv, name))

@@ -128,7 +128,7 @@ def _wrap_exceptions_sync(func: Callable[P, R], exc_type: Type[BaseException]) -
         try:
             return func(*args, **kwargs)
         except Exception as exc:
-            raise exc_type(f'{exc.__class__.__name__}: {exc}') from exc
+            raise exc_type(exc) from exc
 
     return wrapper
 
@@ -139,7 +139,7 @@ def _wrap_exceptions_async(func: Callable[P, Awaitable[R]], exc_type: Type[BaseE
         try:
             return await func(*args, **kwargs)
         except Exception as exc:
-            raise exc_type(f'{exc.__class__.__name__}: {exc}') from exc
+            raise exc_type(exc) from exc
 
     return wrapper
 
