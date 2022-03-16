@@ -1,3 +1,7 @@
 venv/
+.env
+.migrations
 .idea/
 local_db_password.txt
+native/target/
+native/Cargo.lock

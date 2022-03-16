@@ -1,23 +1,22 @@
 from __future__ import annotations
 
+import asyncio
 import re
 import zlib
 from enum import Enum
-from functools import partial
 from io import BytesIO
 from urllib.parse import urlparse
-from typing import Any, AsyncGenerator, ClassVar, Collection, Final, Iterable, Iterator, NamedTuple, TYPE_CHECKING
+from typing import Any, AsyncGenerator, ClassVar, Collection, Final, Iterator, NamedTuple, TYPE_CHECKING
 
 import discord
 from aiohttp import ClientTimeout
-from bs4 import BeautifulSoup
-from bs4.element import NavigableString, Tag
 from discord.ext.commands import BadArgument
 
 from app.core.helpers import BAD_ARGUMENT
 from app.util import AnsiColor, AnsiStringBuilder, UserView, cutoff
-from app.util.common import executor_function, wrap_exceptions
+from app.util.common import wrap_exceptions
 from app.util.pagination import LineBasedFormatter, Paginator
+from app_native import SphinxDocumentResult, has_document, scrape_document
 from config import Colors
 
 if TYPE_CHECKING:
@@ -130,7 +129,6 @@ class SphinxInventory:
         self._key_lookup: dict[str, str] = {}  # display name -> key
 
         # Indexing
-        self._html_lookup: dict[str, BeautifulSoup] = {}  # url -> BeautifulSoup(raw html)
         self.entries: dict[str, SphinxDocumentationEntry] = {}  # key -> SphinxDocumentationEntry
 
     async def build(self) -> bool:
@@ -227,189 +225,13 @@ class SphinxInventory:
         scheme, netloc, path, *_ = urlparse(url)
         return scheme + '://' + netloc + path
 
-    async def _get_soup(self, url: str) -> tuple[BeautifulSoup, str]:
-        url = self._get_base_url(url)
-        if url in self._html_lookup:
-            return self._html_lookup[url], url
-
+    async def _get_html(self, url: str) -> str:
+        """Gets the HTML content for the given url."""
         async with self.session.get(url, timeout=ClientTimeout(sock_connect=10, sock_read=10)) as response:
             if not response.ok:
                 raise IndexingFailure(f'Failed to fetch contents {url!r} ({response.status} {response.reason})')
 
-            html = await response.text(encoding='utf-8')
-            self._html_lookup[url] = res = await self.loop.run_in_executor(None, BeautifulSoup, html, 'lxml')
-
-            return res, url
-
-    @classmethod
-    def _walk_relevant_children(cls, tag: Tag) -> Iterable[NavigableString | Tag]:
-        for child in tag.children:
-            if isinstance(child, NavigableString):
-                yield child
-                continue
-
-            if not isinstance(child, Tag):
-                continue
-
-            child: Tag
-            if child.name in ('p', 'a', 'b', 'i', 'em', 'strong', 'u', 'ul', 'ol', 'code'):
-                yield child
-                continue
-
-            if child.name == 'dl':
-                if 'field-list' not in child.attrs.get('class', ()):
-                    break
-
-                yield child
-                continue
-
-            if child.name == 'div':
-                class_list = child.attrs.get('class', ())
-                valid = 'admonition', 'operations', 'highlight-python3', 'highlight-default'
-
-                if any(c in class_list for c in valid):
-                    yield child
-                    continue
-
-            if child.name.startswith('h'):
-                yield child
-                continue
-
-            yield from cls._walk_relevant_children(child)
-
-    def _parse_tag(self, tag: NavigableString | Tag, embed: discord.Embed, page: str) -> str:
-        # sourcery no-metrics
-        """Parses the given tag and returns the contents."""
-        if isinstance(tag, NavigableString):
-            return str(tag)
-
-        parts = []
-        parse = partial(self._parse_tag, embed=embed, page=page)
-        pending_rubric = None
-
-        for child in self._walk_relevant_children(tag):
-            if isinstance(child, NavigableString):
-                parts.append(str(child))
-
-            elif child.name == 'p':
-                if 'rubric' in child.attrs.get('class', ()):
-                    pending_rubric = child.text.strip()
-                    continue
-
-                parts.append(parse(child))
-
-            elif child.name == 'a':
-                inner = parse(child)
-                href = child["href"]
-
-                if '://' not in href:
-                    href = page + href
-
-                parts.append(f'[{inner}]({href})')
-
-            elif child.name in ('b', 'strong'):
-                parts.append(f'**{parse(child)}**')
-
-            elif child.name in ('i', 'em'):
-                parts.append(f'*{parse(child)}*')
-
-            elif child.name == 'u':
-                parts.append(f'__{parse(child)}__')
-
-            elif child.name == 'code':
-                parts.append(f'`{parse(child)}`')
-
-            elif child.name == 'ul':
-                parts.append('\n')
-                for li in child.find_all('li'):
-                    parts.append(f'\u2022 {parse(li)}\n')
-
-            elif child.name == 'ol':
-                parts.append('\n')
-                for i, li in enumerate(child.find_all('li'), start=1):
-                    parts.append(f'{i}. {parse(li)}\n')
-
-            elif child.name == 'div':
-                if 'admonition' in child.attrs['class']:
-                    first = child.find('p', class_='admonition-title')
-                    if first is None:
-                        continue
-
-                    title = parse(first).strip()
-                    content = parse(first.next_sibling).strip()
-
-                    if title and content:
-                        embed.add_field(name=title, value=content, inline=False)
-                    continue
-
-                elif pending_rubric and 'highlight-python3' in child.attrs['class']:
-                    code = child.text
-                    embed.add_field(name=pending_rubric, value=f'```py\n{code}```', inline=False)
-                    pending_rubric = None
-                    continue
-
-                elif 'highlight-default' in child.attrs['class']:
-                    parts.append(f'```py\n{child.text}```')
-                    continue
-
-                chunks = []
-                for o_child in child.find_all('dl', class_='describe'):
-                    operation = parse(o_child.find('dt')).strip()
-                    description = parse(o_child.find('dd')).replace('\n', ' ').strip()
-
-                    chunks.append(f'**`{operation}`** - {description}')
-
-                if chunks:
-                    embed.add_field(name='Supported Operations', value='\n'.join(chunks), inline=False)
-
-            elif child.name == 'dl':
-                for dt, dd in zip(child.find_all('dt'), child.find_all('dd')):
-                    dt, dd = parse(dt), parse(dd)
-                    if dt and dd:
-                        embed.add_field(name=dt, value=cutoff(dd, 1024, exact=True), inline=False)
-                    elif not dd:
-                        embed.add_field(name=dt, value='No content provided.', inline=False)
-
-        return ''.join(parts)
-
-    @executor_function
-    def _parse_tag_async(self, node: Tag, embed: discord.Embed, page: str) -> str:
-        return self._parse_tag(node, embed, page)
-
-    def _parse_signature(self, node: Tag) -> AnsiStringBuilder:
-        builder = AnsiStringBuilder()
-
-        for child in node.children:
-            if isinstance(child, NavigableString):
-                builder.append(str(child).lstrip('\n'), bold=True, color=AnsiColor.gray)
-                continue
-
-            if not isinstance(child, Tag):
-                continue
-
-            classes = child.attrs.get('class', ())
-            if child.name == 'em' and 'sig-param' not in classes:
-                builder.append(child.text, color=AnsiColor.green)
-
-            elif 'sig-paren' in classes or 'o' in classes:
-                builder.append(child.text, bold=True, color=AnsiColor.gray)
-
-            elif 'n' in classes:
-                builder.append(child.text, color=AnsiColor.yellow)
-
-            elif 'default_value' in classes:
-                builder.append(child.text, color=AnsiColor.cyan)
-
-            elif 'sig-prename' in classes:
-                builder.append(child.text, color=AnsiColor.white if 'descclassname' in classes else AnsiColor.red)
-
-            elif 'descname' in classes or 'sig-name' in classes:
-                builder.append(child.text, bold=True, color=AnsiColor.white)
-
-            elif 'sig-param' in classes:
-                builder.extend(self._parse_signature(child))
-
-        return builder.strip()
+            return await response.text(encoding='utf-8')
 
     @wrap_exceptions(IndexingFailure)
     async def get_entry(self, name: str) -> SphinxDocumentationEntry:
@@ -417,27 +239,34 @@ class SphinxInventory:
         if name in self.entries:
             return self.entries[name]
 
-        soup, page = await self._get_soup(url := self.inventory[name])
-        key = self._key_lookup[name]
+        page = self._get_base_url(url := self.inventory[name])
+        html = await self._get_html(page) if not has_document(page) else ""
 
-        signature = soup.find('dt', id=key)
-        parent = signature.parent
+        key = self._key_lookup[name]
+        response: SphinxDocumentResult = await asyncio.to_thread(scrape_document, page, html, key)
 
         embed = discord.Embed(
             color=Colors.primary,
             title=discord.utils.escape_markdown(name),
             url=url,
         )
-        embed.description = await self._parse_tag_async(parent.find('dd'), embed, page)  # type: ignore
+        embed.description = response.description
         embed.description = re.sub(r'\n{3,}', '\n\n', embed.description)  # Weird fix for odd formatting issues
         if len(embed) > 6000:
             embed.description = cutoff(embed.description, 2048)  # Last resort if embed length is still too long
 
         embed.set_author(name=f'{self.source.name} Documentation')
 
-        signature = signature and self._parse_signature(signature)
-        self.entries[name] = result = SphinxDocumentationEntry(name=name, url=url, signature=signature, embed=embed)
+        for field in response.fields:
+            embed.add_field(name=field.name, value=field.value, inline=field.inline)
 
+        builder = AnsiStringBuilder()
+        for section in response.signature:
+            builder.append(section.content.strip('\n'), bold=section.bold, color=getattr(AnsiColor, section.color))
+
+        builder.ensure_codeblock(fallback='py')
+
+        self.entries[name] = result = SphinxDocumentationEntry(name=name, url=url, signature=builder, embed=embed)
         return result
 
 
@@ -456,7 +285,7 @@ class RTFMDocumentationSelect(discord.ui.Select):
     def form_embed(ctx: Context, entry: SphinxDocumentationEntry) -> discord.Embed:
         embed = entry.embed.copy()
         if entry.signature:
-            embed.description = entry.signature.ensure_codeblock(fallback='py').dynamic(ctx) + '\n' + embed.description
+            embed.description = entry.signature.dynamic(ctx) + '\n' + embed.description
 
         embed.timestamp = ctx.now
         return embed

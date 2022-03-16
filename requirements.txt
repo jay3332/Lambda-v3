@@ -2,6 +2,7 @@ git+https://github.com/Rapptz/discord.py
 git+https://github.com/Gorialis/jishaku
 asyncpg
 beautifulsoup4
+maturin
 lxml
 psutil
 python-dotenv
