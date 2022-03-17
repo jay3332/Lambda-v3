@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
     from app.core import Bot
     from app.database import Database
+    from app.util.flags import FlagMeta
     from app.util.views import AnyUser
 
     P = ParamSpec('P')
@@ -89,8 +90,9 @@ def check_permissions(ctx: Context) -> bool:
 class Command(commands.Command):
     def __init__(self, func: AsyncCallable[..., Any], **kwargs: Any) -> None:
         self._permissions: PermissionSpec = PermissionSpec.new()
-        super().__init__(func, **kwargs)
+        self.custom_flags: FlagMeta[Any] | None = None
 
+        super().__init__(func, **kwargs)
         self.add_check(check_permissions)
 
 
