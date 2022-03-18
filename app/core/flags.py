@@ -252,24 +252,40 @@ class FlagMeta(type, Generic[T]):
     def parser(cls) -> ArgumentParser:
         return cls._parser
 
+    @property
+    def default(cls) -> FlagNamespace[T]:
+        """Returns a Namespace with all flags set to their default values or ``None``.
+
+        If a flag is required then this will raise a ValueError.
+        """
+        # noinspection PyShadowingNames
+        if any(flag.required for flag in cls.flags.values()):
+            raise ValueError('cannot set as default')
+
+        kwargs = {v.dest: v.default for v in cls.flags.values()}
+
+        ns = Namespace(**kwargs)
+        return FlagNamespace(ns, cls)
+
     def get_flag(cls, name: str) -> Flag[T]:
         return cls._flags[name.casefold()]
 
     def is_flag_starter(cls, sample: str) -> bool:
         """Return whether the sample starts with a valid flag."""
-        sample = sample.lstrip()
+        sample = sample.lstrip().replace('\u2014', '--')
+
         if not sample.startswith('-'):
             return False
 
         # noinspection PyShadowingNames
         for flag in cls.walk_flags():
-            if flag.short and sample.startswith('-' + flag.short):
+            if flag.short and sample == '-' + flag.short:
                 return True
 
-            if flag.name and sample.casefold().startswith('--' + flag.name):
+            if flag.name and sample.casefold() == '--' + flag.name:
                 return True
 
-            if any(sample.casefold().startswith('--' + alias) for alias in flag.aliases):
+            if any(sample.casefold() == '--' + alias for alias in flag.aliases):
                 return True
 
         for part in sample.split():
@@ -291,12 +307,14 @@ class FlagMeta(type, Generic[T]):
 
 class FlagNamespace(Generic[T]):
     """Represents a namespace of flags."""
-    
+
     if TYPE_CHECKING:
         __argparse_namespace__: Namespace
-    
-    def __init__(self, ns: Namespace) -> None:
+        __flags__: FlagMeta
+
+    def __init__(self, ns: Namespace, flags: FlagMeta) -> None:
         self.__argparse_namespace__ = ns
+        self.__flags__ = flags
     
     def __getattr__(self, item: str) -> T:
         return getattr(self.__argparse_namespace__, item)
@@ -322,7 +340,12 @@ class FlagNamespace(Generic[T]):
         return sum(1 for _ in self)
 
 
-class Flags(metaclass=FlagMeta[T]):
+class _FakeIdentifier(str):
+    def isidentifier(self) -> bool:
+        return True
+
+
+class Flags(metaclass=FlagMeta):  # type: FlagMeta[T]
     """Base class for all flag groups."""
 
     WS_SPLIT_REGEX: ClassVar[re.Pattern[str]] = re.compile(r'(\s+\S+)')
@@ -350,7 +373,7 @@ class Flags(metaclass=FlagMeta[T]):
                 if joined := ''.join(buffer):
                     args.append(joined)
 
-                args.append(part.lstrip())
+                args.append(part.lstrip().replace('\u2014', '--'))
                 buffer = []
                 continue
 
@@ -366,9 +389,18 @@ class Flags(metaclass=FlagMeta[T]):
             if isinstance(v, list):
                 v = ''.join(v)
 
-            if converter := flag.converter:
-                v = await run_converters(ctx, converter, v, ctx.current_parameter)
+            if isinstance(v, str):  # will also trigger if v was originally a list, intentional.
+                v = v.strip()
+
+            converter = flag.converter
+            if converter and v is not None:
+                param = ctx.current_parameter.replace(name=_FakeIdentifier(f'{ctx.current_parameter.name}.{k}'))
+                v = await run_converters(ctx, converter, v, param)
+
+            elif v is None and flag.required:
+                # we should never actually get here.
+                raise BadArgument(f'flag {flag.name!r} is required.')
 
             setattr(ns, k, v)
 
-        return FlagNamespace(ns)
+        return FlagNamespace(ns, cls)

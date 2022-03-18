@@ -107,6 +107,12 @@ class Command(commands.Command):
 
             if issubclass(param.annotation, Flags):
                 self.custom_flags = param.annotation
+                try:
+                    default = self.custom_flags.default
+                except ValueError:
+                    pass
+                else:
+                    self.params[name] = param.replace(default=default)
 
                 if first_consume_rest:
                     target = self.params[first_consume_rest]
@@ -137,6 +143,30 @@ class Command(commands.Command):
                 return original(*args, **kwargs)
 
             self._callback = wrapper  # leave the params alone
+
+    @property
+    def signature(self) -> str:
+        """Adds POSIX-like flag support to the signature"""
+        result = super().signature
+        if not self.custom_flags:
+            return result
+
+        # A pretty hacky solution that won't work for very specific edge-cases.
+        # I don't want to completely reimplement the base implementation of this so I'll just let this be.
+        result, _ = result.rsplit('=Namespace(', maxsplit=1)
+        result, _ = result.rsplit(' ', maxsplit=1)
+        result = [result]
+
+        for name, flag in self.custom_flags.flags.items():
+            base = '--' + flag.name
+
+            if not flag.store_true:
+                inner = f'{flag.name}={flag.default}' if flag.default or flag.default is False else flag.name
+                base += f' <{inner}>'
+
+            result.append(f'[{base}]' if not flag.required else f'<{base}>')
+
+        return ' '.join(result)
 
 
 @discord.utils.copy_doc(commands.Group)
