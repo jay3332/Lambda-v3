@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 from functools import wraps
-from typing import Any, Callable, Iterable, ParamSpec, TYPE_CHECKING, TypeAlias, TypeVar
+from typing import Any, AsyncIterable, Awaitable, Callable, Iterable, ParamSpec, TYPE_CHECKING, TypeAlias, TypeVar
 
 import discord
 from discord.ext import commands
@@ -127,16 +127,26 @@ async def process_message(ctx: Context, payload: Any) -> discord.Message | None:
     return await ctx.send(**kwargs)
 
 
+async def _walk_callback(ctx: Context, coro: Awaitable[Any] | AsyncIterable[Any]) -> None:
+    if inspect.isasyncgen(coro):
+        async for payload in coro:
+            await process_message(ctx, payload)
+    else:
+        await process_message(ctx, await coro)
+
+
 def easy_command_callback(func: AsyncCallable[..., Any]) -> AsyncCallable[..., Any]:
     @wraps(func)
     async def wrapper(cog: Cog, ctx: Context, /, *args, **kwargs) -> None:
-        coro = func(cog, ctx, *args, **kwargs)
+        await _walk_callback(ctx, func(cog, ctx, *args, **kwargs))
 
-        if inspect.isasyncgen(coro):
-            async for payload in coro:
-                await process_message(ctx, payload)
-        else:
-            await process_message(ctx, await coro)
+    return wrapper
+
+
+def _no_cog_easy_command_callback(func: AsyncCallable[..., Any]) -> AsyncCallable[..., Any]:
+    @wraps(func)
+    async def wrapper(ctx: Context, /, *args, **kwargs) -> None:
+        await _walk_callback(ctx, func(ctx, *args, **kwargs))
 
     return wrapper
 
@@ -187,7 +197,7 @@ def command(
     usage: str = MISSING,
     brief: str = MISSING,
     help: str = MISSING,
-    easy_callback: bool = True,
+    easy_callback: bool | AsyncCallableDecorator = True,
     **_other_kwargs: Any,
 ) -> Callable[..., Command]:
     kwargs = _resolve_command_kwargs(
@@ -196,9 +206,16 @@ def command(
     result = commands.command(**kwargs, **_other_kwargs)
 
     if easy_callback:
-        return lambda func: result(easy_command_callback(func))
+        if easy_callback is True:
+            easy_callback = easy_command_callback
+
+        return lambda func: result(easy_callback(func))
 
     return result
+
+
+def dynamic_command(**kwargs: Any) -> Callable[..., Command]:
+    return command(**kwargs, easy_callback=_no_cog_easy_command_callback)
 
 
 # noinspection PyShadowingBuiltins

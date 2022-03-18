@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from functools import wraps
 from typing import Any, Awaitable, Callable, NamedTuple, ParamSpec, TYPE_CHECKING
 
 import discord
 from discord.ext import commands
-from discord.utils import maybe_coroutine
+from discord.utils import MISSING, maybe_coroutine
 
+from app.util.flags import ConsumeUntilFlag, FlagMeta, Flags
 from app.util.types import AsyncCallable, TypedContext
 from app.util.views import ConfirmationView
 
@@ -14,7 +16,6 @@ if TYPE_CHECKING:
 
     from app.core import Bot
     from app.database import Database
-    from app.util.flags import FlagMeta
     from app.util.views import AnyUser
 
     P = ParamSpec('P')
@@ -94,6 +95,48 @@ class Command(commands.Command):
 
         super().__init__(func, **kwargs)
         self.add_check(check_permissions)
+
+        self._transform_flag_parameters()
+
+    def _transform_flag_parameters(self) -> None:
+        first_consume_rest = None
+
+        for name, param in self.params.items():
+            if param.kind is not param.KEYWORD_ONLY:
+                continue
+
+            if issubclass(param.annotation, Flags):
+                self.custom_flags = param.annotation
+
+                if first_consume_rest:
+                    target = self.params[first_consume_rest]
+                    default = MISSING if target.default is param.empty else target.default
+                    annotation = None if target.annotation is param.empty else target.annotation
+
+                    self.params[first_consume_rest] = target.replace(
+                        annotation=ConsumeUntilFlag(annotation, default),
+                        kind=param.POSITIONAL_OR_KEYWORD,
+                    )
+
+                break
+
+            elif not first_consume_rest:
+                first_consume_rest = name
+
+        if first_consume_rest and self.custom_flags:  # A kw-only has been transformed into a pos-or-kw, reverse this here
+            @wraps(original := self.callback)
+            def wrapper(*args: Any, **kwargs: Any) -> Awaitable[Any]:
+                idx = 2 if self.cog else 1
+
+                for i, (arg, (k, v)) in enumerate(zip(args[idx:], self.params.items())):
+                    if k == first_consume_rest:
+                        args = args[:i + idx]
+                        kwargs[k] = arg
+                        break
+
+                return original(*args, **kwargs)
+
+            self._callback = wrapper  # leave the params alone
 
 
 @discord.utils.copy_doc(commands.Group)
