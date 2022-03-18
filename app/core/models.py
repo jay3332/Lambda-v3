@@ -7,7 +7,7 @@ import discord
 from discord.ext import commands
 from discord.utils import MISSING, maybe_coroutine
 
-from app.util.flags import ConsumeUntilFlag, FlagMeta, Flags
+from app.core.flags import ConsumeUntilFlag, FlagMeta, Flags
 from app.util.types import AsyncCallable, TypedContext
 from app.util.views import ConfirmationView
 
