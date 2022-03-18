@@ -258,7 +258,7 @@ class SphinxInventory:
         embed.set_author(name=f'{self.source.name} Documentation')
 
         for field in response.fields:
-            embed.add_field(name=field.name, value=field.value, inline=field.inline)
+            embed.add_field(name=field.name, value=cutoff(field.value, 1024, exact=True), inline=field.inline)
 
         builder = AnsiStringBuilder()
         for section in response.signature:
