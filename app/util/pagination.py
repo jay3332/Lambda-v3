@@ -120,12 +120,16 @@ class PaginatorView(UserView):
             self.add_item(_PaginatorButton(self.paginator, 0, emoji=Emojis.Arrows.first, row=self._row))
             self.add_item(_PaginatorButton(self.paginator, current - 1, emoji=Emojis.Arrows.previous, row=self._row))
 
-            if isinstance(self._center_button, _PageInputButton):
-                label = f'Page {self.paginator.current_page + 1}/{self.paginator.max_pages}'
-                self._center_button.label = label
+        if not self.dont_render_pagination_buttons and isinstance(self._center_button, _PageInputButton):
+            label = f'Page {self.paginator.current_page + 1}/{self.paginator.max_pages}'
+            self._center_button.label = label
 
             self.add_item(self._center_button)
 
+        elif not isinstance(self._center_button, _PageInputButton):
+            self.add_item(self._center_button)
+
+        if not self.dont_render_pagination_buttons:
             self.add_item(_PaginatorButton(self.paginator, current + 1, emoji=Emojis.Arrows.forward, row=self._row))
             self.add_item(_PaginatorButton(self.paginator, self.paginator.max_pages - 1, emoji=Emojis.Arrows.last, row=self._row))
 

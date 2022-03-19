@@ -13,6 +13,7 @@ import jishaku
 from aiohttp import ClientSession
 from discord.ext import commands
 
+from app.core.help import HelpCommand
 from app.core.models import Cog, Context, PermissionSpec
 from app.database import Database
 from config import allowed_mentions, default_prefix, description, name as bot_name, owner, resolved_token, version
@@ -58,7 +59,7 @@ class Bot(commands.Bot):
 
         super().__init__(
             command_prefix=self.__class__.resolve_command_prefix,
-            # help_command=HelpCommand(),
+            help_command=HelpCommand(),
             update_application_commands_at_startup=True,
             description=description,
             case_insensitive=True,

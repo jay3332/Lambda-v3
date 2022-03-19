@@ -11,6 +11,8 @@ from config import support_server
 class Miscellaneous(Cog):
     """Miscellaneous commands that don't really belong in any other category."""
 
+    emoji = '\U0001f44d'
+
     @staticmethod
     def _ping_metric(latency: float, bad: float, good: float) -> AnsiColor:
         if latency > bad:

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import wraps
-from typing import Any, Awaitable, Callable, NamedTuple, ParamSpec, TYPE_CHECKING
+from typing import Any, Awaitable, Callable, ClassVar, NamedTuple, ParamSpec, TYPE_CHECKING
 
 import discord
 from discord.ext import commands
@@ -32,6 +32,7 @@ __all__ = (
 @discord.utils.copy_doc(commands.Cog)
 class Cog(commands.Cog):
     __hidden__: bool = False
+    emoji: ClassVar[str | None] = None
 
     def __init__(self, bot: Bot) -> None:
         self.bot: Bot = bot
@@ -228,6 +229,11 @@ class Context(TypedContext):
 
         user = self.bot.user
         return self.prefix.replace(f'<@{user.id}>', f'@{user.name}').replace(f'<@!{user.id}>', f'@{user.name}')
+
+    @property
+    def is_interaction(self) -> bool:
+        """Whether an interaction is attached to this context."""
+        return hasattr(self, 'interaction')
 
     async def thumbs(self, message: discord.Message = None) -> None:
         """Reacts to the message with a thumbs-up emoji."""

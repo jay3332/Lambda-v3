@@ -8,6 +8,8 @@ from app.util.types import CommandResponse
 class Developer(Cog):
     """Commands that are useful for developers."""
 
+    emoji = '\U0001f6e0'
+
     def __setup__(self) -> None:
         self.docs: DocumentationManager = DocumentationManager(self.bot)
 
