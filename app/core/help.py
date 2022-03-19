@@ -7,6 +7,7 @@ import discord
 from discord.ext import commands
 
 from app.core.models import Command
+from app.util import AnsiColor, AnsiStringBuilder
 from app.util.common import cutoff, humanize_duration, pluralize
 from app.util.pagination import Paginator, PaginatorView, FieldBasedFormatter
 from app.util.views import UserView
@@ -187,7 +188,7 @@ class HelpCommand(commands.HelpCommand):
 
     @classmethod
     def get_bot_help_paginator(cls, ctx: Context, mapping: dict[Cog, list[Command]]) -> Paginator:
-        embed = discord.Embed(color=Colors.primary, timestamp=ctx.now)
+        embed = discord.Embed(color=Colors.primary, description=ctx.bot.description, timestamp=ctx.now)
         embed.set_author(name=f'Help: {ctx.author.name}', icon_url=ctx.author.avatar.url)
 
         mapping = cls.filter_mapping(mapping)
@@ -236,7 +237,19 @@ class HelpCommand(commands.HelpCommand):
         embed.set_author(name=f'Help: {ctx.author.name}', icon_url=ctx.author.avatar.url)
 
         body = command.help or 'No description provided.'
-        embed.description = f'```{ctx.clean_prefix}{command.qualified_name} {command.usage}```\n{body}'  # TODO: ansi signature
+
+        signature = command.ansi_signature if hasattr(command, 'ansi_signature') else command.signature
+        if isinstance(signature, AnsiStringBuilder):
+            new = AnsiStringBuilder()
+            new.append(ctx.clean_prefix, color=AnsiColor.white, bold=True)
+            new.append(command.qualified_name + ' ', color=AnsiColor.green, bold=True)
+            new.extend(signature)
+
+            signature = new.ensure_codeblock(fallback='md').dynamic(ctx)
+        else:
+            signature = f'```md\n{ctx.clean_prefix}{command.qualified_name} {signature}```'
+
+        embed.description = f'{signature}\n{body}'
 
         if command.aliases:
             embed.add_field(name='Aliases', value='\u2002'.join(f'`{alias}`' for alias in command.aliases))

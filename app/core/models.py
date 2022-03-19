@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from functools import wraps
-from typing import Any, Awaitable, Callable, ClassVar, NamedTuple, ParamSpec, TYPE_CHECKING
+from typing import Any, Awaitable, Callable, ClassVar, Literal, NamedTuple, ParamSpec, TYPE_CHECKING, Union
 
 import discord
 from discord.ext import commands
 from discord.utils import MISSING, maybe_coroutine
 
 from app.core.flags import ConsumeUntilFlag, FlagMeta, Flags
+from app.util import AnsiColor, AnsiStringBuilder
 from app.util.types import AsyncCallable, TypedContext
 from app.util.views import ConfirmationView
 
@@ -146,6 +147,99 @@ class Command(commands.Command):
             self._callback = wrapper  # leave the params alone
 
     @property
+    def ansi_signature(self) -> AnsiStringBuilder:  # sourcery no-metrics
+        """Returns an ANSI builder for the signature of this command."""
+        if self.usage is not None:
+            return AnsiStringBuilder(self.usage)
+
+        params = self.clean_params
+        result = AnsiStringBuilder()
+        if not params:
+            return result
+
+        for name, param in params.items():
+            greedy = isinstance(param.annotation, commands.Greedy)
+            optional = False  # postpone evaluation of if it's an optional argument
+
+            # for typing.Literal[...], typing.Optional[typing.Literal[...]], and Greedy[typing.Literal[...]], the
+            # parameter signature is a literal list of it's values
+            annotation = param.annotation.converter if greedy else param.annotation
+            origin = getattr(annotation, '__origin__', None)
+            if not greedy and origin is Union:
+                none_cls = type(None)
+                union_args = annotation.__args__
+                optional = union_args[-1] is none_cls
+
+                if len(union_args) == 2 and optional:
+                    annotation = union_args[0]
+                    origin = getattr(annotation, '__origin__', None)
+
+            if isinstance(annotation, FlagMeta) and self.custom_flags:
+                for flag in self.custom_flags.walk_flags():
+                    start, end = '<>' if flag.required else '[]'
+                    base = '--' + flag.name
+
+                    result.append(start, bold=True, color=AnsiColor.gray)
+                    result.append(base, color=AnsiColor.yellow if flag.required else AnsiColor.blue)
+
+                    if not flag.store_true:
+                        result.append(' <', color=AnsiColor.gray, bold=True)
+                        result.append(flag.dest, color=AnsiColor.magenta)
+
+                        if flag.default or flag.default is False:
+                            result.append('=', color=AnsiColor.gray)
+                            result.append(str(flag.default), color=AnsiColor.cyan)
+
+                        result.append('>', color=AnsiColor.gray, bold=True)
+
+                    result.append(end + ' ', color=AnsiColor.gray, bold=True)
+
+                continue
+
+            if origin is Literal:
+                name = '|'.join(f'"{v}"' if isinstance(v, str) else str(v) for v in annotation.__args__)
+
+            if param.default is not param.empty:
+                # We don't want None or '' to trigger the [name=value] case, and instead it should
+                # do [name] since [name=None] or [name=] are not exactly useful for the user.
+                should_print = param.default if isinstance(param.default, str) else param.default is not None
+                result.append('[', color=AnsiColor.gray, bold=True)
+                result.append(name, color=AnsiColor.blue)
+
+                if should_print:
+                    result.append('=', color=AnsiColor.gray, bold=True)
+                    result.append(str(param.default), color=AnsiColor.cyan)
+                    extra = '...' if greedy else ''
+                else:
+                    extra = ''
+
+                result.append(']' + extra + ' ', color=AnsiColor.gray, bold=True)
+                continue
+
+            elif param.kind == param.VAR_POSITIONAL:
+                if self.require_var_positional:
+                    start = '<'
+                    end = '...>'
+                else:
+                    start = '['
+                    end = '...]'
+
+            elif greedy:
+                start = '['
+                end = ']...'
+
+            elif optional:
+                start, end = '[]'
+            else:
+                start, end = '<>'
+
+            result.append(start, color=AnsiColor.gray, bold=True)
+            result.append(name, color=AnsiColor.blue if start == '[' else AnsiColor.yellow)
+            result.append(end + ' ', color=AnsiColor.gray, bold=True)
+
+        return result
+
+    @property
     def signature(self) -> str:
         """Adds POSIX-like flag support to the signature"""
         result = super().signature
@@ -153,12 +247,12 @@ class Command(commands.Command):
             return result
 
         # A pretty hacky solution that won't work for very specific edge-cases.
-        # I don't want to completely reimplement the base implementation of this so I'll just let this be.
+        # I don't want to completely reimplement the base implementation of this, so I'll just let this be.
         result, _ = result.rsplit('=Namespace(', maxsplit=1)
         result, _ = result.rsplit(' ', maxsplit=1)
         result = [result]
 
-        for name, flag in self.custom_flags.flags.items():
+        for flag in self.custom_flags.walk_flags():
             base = '--' + flag.name
 
             if not flag.store_true:
