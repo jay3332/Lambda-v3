@@ -11,7 +11,7 @@ from app.util import AnsiColor, AnsiStringBuilder
 from app.util.common import cutoff, humanize_duration, pluralize
 from app.util.pagination import Paginator, PaginatorView, FieldBasedFormatter
 from app.util.views import UserView
-from config import Colors
+from config import Colors, support_server
 
 if TYPE_CHECKING:
     from app.core import Cog, Context, GroupCommand
@@ -188,8 +188,20 @@ class HelpCommand(commands.HelpCommand):
 
     @classmethod
     def get_bot_help_paginator(cls, ctx: Context, mapping: dict[Cog, list[Command]]) -> Paginator:
-        embed = discord.Embed(color=Colors.primary, description=ctx.bot.description, timestamp=ctx.now)
+        url = discord.utils.oauth_url(
+            client_id=ctx.bot.user.id,
+            permissions=discord.Permissions(8),
+            scopes=('bot', 'applications.commands'),
+        )
+        description = (
+            f'{ctx.bot.description}\n\nI currently have {len(ctx.bot.commands)} commands registered.\n'
+            f'Use `{ctx.clean_prefix}help <command>` to see more information about a command.\n\n'
+            f'[**Invite Lambda**]({url} "{len(ctx.bot.guilds)} guilds") | [**Support Server**]({support_server})'
+        )
+
+        embed = discord.Embed(color=Colors.primary, description=description, timestamp=ctx.now)
         embed.set_author(name=f'Help: {ctx.author.name}', icon_url=ctx.author.avatar.url)
+        embed.set_thumbnail(url=ctx.bot.user.avatar.url)
 
         mapping = cls.filter_mapping(mapping)
 
@@ -204,7 +216,7 @@ class HelpCommand(commands.HelpCommand):
 
         return Paginator(
             ctx,
-            FieldBasedFormatter(embed, fields, per_page=7, page_in_footer=True),
+            FieldBasedFormatter(embed, fields, per_page=5, page_in_footer=True),
             center_button=CenterButton(ctx),
             other_components=[CogSelect(mapping)],
             row=1,

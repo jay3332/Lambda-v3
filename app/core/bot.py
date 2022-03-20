@@ -5,6 +5,7 @@ import importlib
 import inspect
 import logging
 import os
+import re
 import sys
 from typing import Any, ClassVar, Final, TYPE_CHECKING
 
@@ -13,9 +14,11 @@ import jishaku
 from aiohttp import ClientSession
 from discord.ext import commands
 
+from app.core.flags import FlagMeta
 from app.core.help import HelpCommand
 from app.core.models import Cog, Context, PermissionSpec
 from app.database import Database
+from app.util import AnsiColor, AnsiStringBuilder
 from config import allowed_mentions, default_prefix, description, name as bot_name, owner, resolved_token, version
 
 __all__ = (
@@ -211,6 +214,7 @@ class Bot(commands.Bot):
         self.log.info(f'Gateway received READY @ {self.startup_timestamp}')
 
     async def on_command_error(self, ctx: Context, error: Exception) -> Any:
+        # sourcery no-metrics
         """Handles command errors."""
         error = getattr(error, 'original', error)
 
@@ -219,9 +223,6 @@ class Bot(commands.Bot):
         )
         if isinstance(error, blacklist):
             return
-
-        if isinstance(error, commands.BadArgument):
-            return await ctx.send(error, reference=ctx.message, delete_after=15)
 
         if isinstance(error, commands.CommandOnCooldown):
             if not ctx.guild and ctx.channel.permissions_for(ctx.me).add_reactions:
@@ -256,10 +257,84 @@ class Bot(commands.Bot):
 
             return
 
-        self.log.critical(f'Uncaught error occured when trying to invoke {ctx.command.name}: {error}', exc_info=error)
+        # Parameter-based errors.
 
-        await ctx.send(f'panic!({error})', reference=ctx.message)
-        raise error
+        if isinstance(error, commands.BadArgument):
+            if isinstance(error, commands.UserInputError):
+                return await ctx.send(error, reference=ctx.message, delete_after=15)
+
+            param = ctx.current_parameter
+
+        elif isinstance(error, commands.MissingRequiredArgument):
+            param = error.param
+
+        else:
+            self.log.critical(f'Uncaught error occured when trying to invoke {ctx.command.name}: {error}', exc_info=error)
+
+            await ctx.send(f'panic!({error})', reference=ctx.message)
+            raise error
+
+        builder = AnsiStringBuilder()
+        builder.append('Attempted to parse command signature:').newline(2)
+        builder.append('    ' + ctx.clean_prefix, color=AnsiColor.white, bold=True)
+
+        if ctx.invoked_parents and ctx.invoked_subcommand:
+            invoked_with = ' '.join((*ctx.invoked_parents, ctx.invoked_with))
+        elif ctx.invoked_parents:
+            invoked_with = ' '.join(ctx.invoked_parents)
+        else:
+            invoked_with = ctx.invoked_with
+
+        builder.append(invoked_with + ' ', color=AnsiColor.green, bold=True)
+
+        command = ctx.command
+        signature = command.ansi_signature if hasattr(ctx.command, 'ansi_signature') else command.signature
+
+        if isinstance(signature, AnsiStringBuilder):
+            builder.extend(signature)
+            signature = signature.raw
+
+        match = re.search(
+            fr"[<\[](--)?{re.escape(param.name)}((=.*)?| [<\[]\w+(\.{{3}})?[>\]])(\.{{3}})?[>\]](\.{{3}})?",
+            signature,
+        )
+        if match:
+            lower, upper = match.span()
+        elif isinstance(param.annotation, FlagMeta):
+            param_store = command.params
+            old = command.params.copy()
+
+            flag_key, _ = next(filter(lambda p: p[1].annotation is command.custom_flags, param_store.items()))
+
+            del param_store[flag_key]
+            lower = len(command.raw_signature) + 1
+
+            command.params = old
+            del param_store
+
+            upper = len(command.signature) - 1
+        else:
+            raise RuntimeError('could not match parameter in signature')
+
+        builder.newline()
+
+        offset = len(ctx.clean_prefix) + len(ctx.invoked_with)
+        content = f'{" " * (lower + offset + 5)}{"^" * (upper - lower)} Error occured here'
+        builder.append(content, color=AnsiColor.gray, bold=True).newline(2)
+        builder.append(str(error), color=AnsiColor.red, bold=True)
+
+        if invoked_with != ctx.command.qualified_name:
+            builder.newline(2)
+            builder.append('Hint: ', color=AnsiColor.white, bold=True)
+
+            builder.append('command alias ')
+            builder.append(repr(invoked_with), color=AnsiColor.cyan, bold=True)
+            builder.append(' points to ')
+            builder.append(ctx.command.qualified_name, color=AnsiColor.green, bold=True)
+            builder.append(', is this correct?')
+
+        ansi = builder.ensure_codeblock().dynamic(ctx)
+        await ctx.send(f'Could not parse your command input properly:\n{ansi}', reference=ctx.message)
 
     async def close(self) -> None:
         """Closes this bot and it's aiohttp ClientSession."""

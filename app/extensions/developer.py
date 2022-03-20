@@ -44,7 +44,7 @@ class Developer(Cog):
         """
         source = source or DocumentationManager.SOURCES['discord.py']
         result = await self.docs.execute_doc(ctx, source=source, name=node)
-        if result is BAD_ARGUMENT:
+        if result is BAD_ARGUMENT:  # artifact of old code. ERROR should be used for future reference instead of BAD_ARGUMENT
             await ctx.invoke(self.rtfm, source=source, query=node)
             return
 

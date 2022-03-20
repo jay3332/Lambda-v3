@@ -242,26 +242,11 @@ class Command(commands.Command):
     @property
     def signature(self) -> str:
         """Adds POSIX-like flag support to the signature"""
-        result = super().signature
-        if not self.custom_flags:
-            return result
+        return self.ansi_signature.raw
 
-        # A pretty hacky solution that won't work for very specific edge-cases.
-        # I don't want to completely reimplement the base implementation of this, so I'll just let this be.
-        result, _ = result.rsplit('=Namespace(', maxsplit=1)
-        result, _ = result.rsplit(' ', maxsplit=1)
-        result = [result]
-
-        for flag in self.custom_flags.walk_flags():
-            base = '--' + flag.name
-
-            if not flag.store_true:
-                inner = f'{flag.name}={flag.default}' if flag.default or flag.default is False else flag.name
-                base += f' <{inner}>'
-
-            result.append(f'[{base}]' if not flag.required else f'<{base}>')
-
-        return ' '.join(result)
+    @property
+    def raw_signature(self) -> str:
+        return super().signature
 
 
 @discord.utils.copy_doc(commands.Group)

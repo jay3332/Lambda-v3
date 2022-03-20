@@ -34,6 +34,7 @@ __all__ = (
 EDIT  = setinel('EDIT', repr='EDIT')
 REPLY = setinel('REPLY', repr='REPLY')
 BAD_ARGUMENT = setinel('BAD_ARGUMENT', repr='BAD_ARGUMENT')
+ERROR = setinel('ERROR', repr='ERROR')
 
 MISSING = setinel('MISSING', bool=False, repr='MISSING')
 
@@ -86,6 +87,9 @@ async def process_message(ctx: Context, payload: Any) -> discord.Message | None:
 
         elif part is BAD_ARGUMENT:
             raise commands.BadArgument(kwargs['content'])
+
+        elif part is ERROR:
+            raise commands.UserInputError(kwargs['content'])
 
         elif isinstance(part, discord.Embed):
             kwargs['embeds'].append(part)
