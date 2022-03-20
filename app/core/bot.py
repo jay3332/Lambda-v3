@@ -289,10 +289,8 @@ class Bot(commands.Bot):
 
         command = ctx.command
         signature = Command.ansi_signature_of(command)
-
-        if isinstance(signature, AnsiStringBuilder):
-            builder.extend(signature)
-            signature = signature.raw
+        builder.extend(signature)
+        signature = signature.raw
 
         match = re.search(
             fr"[<\[](--)?{re.escape(param.name)}((=.*)?| [<\[]\w+(\.{{3}})?[>\]])(\.{{3}})?[>\]](\.{{3}})?",
@@ -318,7 +316,7 @@ class Bot(commands.Bot):
 
         builder.newline()
 
-        offset = len(ctx.clean_prefix) + len(ctx.invoked_with)
+        offset = len(ctx.clean_prefix) + len(invoked_with)
         content = f'{" " * (lower + offset + 5)}{"^" * (upper - lower)} Error occured here'
         builder.append(content, color=AnsiColor.gray, bold=True).newline(2)
         builder.append(str(error), color=AnsiColor.red, bold=True)
