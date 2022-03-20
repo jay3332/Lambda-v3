@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from typing import Collection, Generic, TYPE_CHECKING, TypeVar
 
 from discord import ButtonStyle, Embed, Interaction
@@ -260,7 +261,7 @@ class FieldBasedFormatter(Formatter[dict[str, V]]):
         super().__init__(field_kwargs, per_page=per_page)
 
     async def format_page(self, paginator: Paginator, fields: list[dict[str, V]]) -> Embed:
-        embed = self.embed.copy()
+        embed = Embed.from_dict(deepcopy(self.embed.to_dict()))
         for field in fields:
             embed.add_field(**field)
 

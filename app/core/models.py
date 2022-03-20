@@ -9,6 +9,7 @@ from discord.utils import MISSING, maybe_coroutine
 
 from app.core.flags import ConsumeUntilFlag, FlagMeta, Flags
 from app.util import AnsiColor, AnsiStringBuilder
+from app.util.structures import TemporaryAttribute
 from app.util.types import AsyncCallable, TypedContext
 from app.util.views import ConfirmationView
 
@@ -145,6 +146,22 @@ class Command(commands.Command):
                 return original(*args, **kwargs)
 
             self._callback = wrapper  # leave the params alone
+
+    @classmethod
+    def ansi_signature_of(cls, command: commands.Command, /) -> AnsiStringBuilder:
+        if isinstance(command, cls):
+            return command.ansi_signature  # type: ignore
+
+        with TemporaryAttribute(command, attr='custom_flags', value=None):
+            return cls.ansi_signature.fget(command)
+
+    @property
+    def permission_spec(self) -> PermissionSpec:
+        """Return the permission specification for this command.
+
+        Useful for the help command.
+        """
+        return self._permissions
 
     @property
     def ansi_signature(self) -> AnsiStringBuilder:  # sourcery no-metrics

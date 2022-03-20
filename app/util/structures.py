@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from time import perf_counter
-from typing import TypeVar
+from typing import Generic, TypeVar, TYPE_CHECKING
 
-T = TypeVar('T', bound='Timer')
+if TYPE_CHECKING:
+    TimerT = TypeVar('TimerT', bound='Timer')
+
+T = TypeVar('T')
+V = TypeVar('V')
 
 __all__ = (
     'Timer',
@@ -17,7 +21,7 @@ class Timer:
         self.start_time: float | None = None
         self.end_time: float | None = None
 
-    def __enter__(self: T) -> T:
+    def __enter__(self: TimerT) -> TimerT:
         self.start_time = perf_counter()
         return self
 
@@ -39,3 +43,19 @@ class Timer:
 
     def __float__(self) -> float:
         return self.elapsed
+
+
+class TemporaryAttribute(Generic[T, V]):
+    __slots__ = ('obj', 'attr', 'value')
+
+    def __init__(self, obj: T, attr: str, value: V) -> None:
+        self.obj: T = obj
+        self.attr: str = attr
+        self.value: V = value
+
+    def __enter__(self) -> T:
+        setattr(self.obj, self.attr, self.value)
+        return self.obj
+
+    def __exit__(self, _type, _val, _tb) -> None:
+        delattr(self.obj, self.attr)

@@ -172,7 +172,10 @@ class HelpCommand(commands.HelpCommand):
 
     @staticmethod
     def filter_mapping(mapping: dict[Cog, list[Command]]) -> dict[Cog, list[Command]]:
-        return {cog: v for cog, v in mapping.items() if not getattr(cog, '__hidden__', True)}
+        try:
+            return {cog: v for cog, v in mapping.items() if not getattr(cog, '__hidden__', True)}
+        finally:
+            del mapping
 
     @staticmethod
     def commands_into_fields(ctx: Context, cmd: list[Command]) -> list[dict[str, str | bool]]:
@@ -250,17 +253,12 @@ class HelpCommand(commands.HelpCommand):
 
         body = command.help or 'No description provided.'
 
-        signature = command.ansi_signature if hasattr(command, 'ansi_signature') else command.signature
-        if isinstance(signature, AnsiStringBuilder):
-            new = AnsiStringBuilder()
-            new.append(ctx.clean_prefix, color=AnsiColor.white, bold=True)
-            new.append(command.qualified_name + ' ', color=AnsiColor.green, bold=True)
-            new.extend(signature)
+        signature = AnsiStringBuilder()
+        signature.append(ctx.clean_prefix, color=AnsiColor.white, bold=True)
+        signature.append(command.qualified_name + ' ', color=AnsiColor.green, bold=True)
+        signature.extend(Command.ansi_signature_of(command))
 
-            signature = new.ensure_codeblock(fallback='md').dynamic(ctx)
-        else:
-            signature = f'```md\n{ctx.clean_prefix}{command.qualified_name} {signature}```'
-
+        signature = signature.ensure_codeblock(fallback='md').dynamic(ctx)
         embed.description = f'{signature}\n{body}'
 
         if command.aliases:
@@ -269,6 +267,18 @@ class HelpCommand(commands.HelpCommand):
         if cooldown := command._buckets._cooldown:
             humanized = pluralize(f'{cooldown.rate} time(s) per {humanize_duration(cooldown.per)}')
             embed.add_field(name='Cooldown', value=humanized)
+
+        if isinstance(command, Command):
+            spec = command.permission_spec
+            parts = []
+
+            if user := spec.user:
+                parts.append('User: ' + ', '.join(map(spec.permission_as_str, user)))
+
+            if bot := spec.bot:
+                parts.append('Bot: ' + ', '.join(map(spec.permission_as_str, bot)))
+
+            embed.add_field(name='Required Permissions', value='\n'.join(parts), inline=False)
 
         return embed
 

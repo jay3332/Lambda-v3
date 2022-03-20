@@ -16,7 +16,7 @@ from discord.ext import commands
 
 from app.core.flags import FlagMeta
 from app.core.help import HelpCommand
-from app.core.models import Cog, Context, PermissionSpec
+from app.core.models import Cog, Command, Context, PermissionSpec
 from app.database import Database
 from app.util import AnsiColor, AnsiStringBuilder
 from config import allowed_mentions, default_prefix, description, name as bot_name, owner, resolved_token, version
@@ -288,7 +288,7 @@ class Bot(commands.Bot):
         builder.append(invoked_with + ' ', color=AnsiColor.green, bold=True)
 
         command = ctx.command
-        signature = command.ansi_signature if hasattr(ctx.command, 'ansi_signature') else command.signature
+        signature = Command.ansi_signature_of(command)
 
         if isinstance(signature, AnsiStringBuilder):
             builder.extend(signature)
