@@ -115,10 +115,12 @@ class AnsiStringBuilder:
         self._raw = self._raw.strip()
         return self
 
-    def newline(self, lines: int = 1) -> None:
+    def newline(self, lines: int = 1) -> AnsiStringBuilder:
         """Adds a newline to this string."""
         self.buffer += '\n' * lines
         self._raw += '\n' * lines
+
+        return self
 
     def bold(self, string: str = '', **kwargs: AnsiIdentifierKwargs) -> AnsiStringBuilder:
         """Adds and persists bold text."""
