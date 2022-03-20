@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import IntEnum
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypeAlias
 
 from discord import User
 
@@ -9,6 +9,8 @@ from app.util.common import setinel
 
 if TYPE_CHECKING:
     from app.core import Context
+
+    AnsiIdentifierKwargs: TypeAlias = 'AnsiColor | AnsiBackgroundColor | bool'
 
 CLEAR = setinel('CLEAR', str='\x1b[0m', repr='<clear>', bool=False)
 
@@ -89,9 +91,9 @@ class AnsiStringBuilder:
         self.buffer: str = string
         self._raw: str = string
 
-        self._persisted_kwargs: dict[str, AnsiColor | AnsiBackgroundColor | bool] = {}
+        self._persisted_kwargs: dict[str, AnsiIdentifierKwargs] = {}
 
-    def append(self, string: str, *, clear: bool = True, **kwargs: AnsiColor | AnsiBackgroundColor | bool) -> AnsiStringBuilder:
+    def append(self, string: str, *, clear: bool = True, **kwargs: AnsiIdentifierKwargs) -> AnsiStringBuilder:
         """Adds text to this string."""
         kwargs = self._persisted_kwargs | kwargs
         if kwargs:
@@ -118,28 +120,28 @@ class AnsiStringBuilder:
         self.buffer += '\n' * lines
         self._raw += '\n' * lines
 
-    def bold(self, string: str = '', **kwargs: AnsiColor | AnsiBackgroundColor | bool) -> AnsiStringBuilder:
+    def bold(self, string: str = '', **kwargs: AnsiIdentifierKwargs) -> AnsiStringBuilder:
         """Adds and persists bold text."""
         self.append(string, bold=True, clear=False, **kwargs)
 
         self._persisted_kwargs['bold'] = True
         return self
 
-    def no_bold(self, string: str = '', **kwargs: AnsiColor | AnsiBackgroundColor | bool) -> AnsiStringBuilder:
+    def no_bold(self, string: str = '', **kwargs: AnsiIdentifierKwargs) -> AnsiStringBuilder:
         """Adds and persists no-bold text."""
         self.append(string, bold=False, clear=False, **kwargs)
 
         del self._persisted_kwargs['bold']
         return self
 
-    def underline(self, string: str = '', **kwargs: AnsiColor | AnsiBackgroundColor | bool) -> AnsiStringBuilder:
+    def underline(self, string: str = '', **kwargs: AnsiIdentifierKwargs) -> AnsiStringBuilder:
         """Adds and persists underlined text."""
         self.append(string, underline=True, clear=False, **kwargs)
 
         self._persisted_kwargs['underline'] = True
         return self
 
-    def no_underline(self, string: str = '', **kwargs: AnsiColor | AnsiBackgroundColor | bool) -> AnsiStringBuilder:
+    def no_underline(self, string: str = '', **kwargs: AnsiIdentifierKwargs) -> AnsiStringBuilder:
         """Adds and persists no-underlined text."""
         self.append(string, underline=False, clear=False, **kwargs)
 
@@ -153,7 +155,7 @@ class AnsiStringBuilder:
         self._persisted_kwargs['color'] = color
         return self
 
-    def no_color(self, string: str = '', **kwargs: AnsiColor | AnsiBackgroundColor | bool) -> AnsiStringBuilder:
+    def no_color(self, string: str = '', **kwargs: AnsiIdentifierKwargs) -> AnsiStringBuilder:
         """Adds and persists no-color text."""
         self.append(string, color=AnsiColor.default, clear=False, **kwargs)
 
