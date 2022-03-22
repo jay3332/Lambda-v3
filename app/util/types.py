@@ -7,7 +7,7 @@ from discord.ext import commands
 from discord.ui import View
 
 from app.util.ansi import AnsiStringBuilder
-from app.util.common import SetinelConstant
+from app.util.common import SentinelConstant
 from app.util.pagination import Paginator
 
 if TYPE_CHECKING:
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 P = ParamSpec('P')
 R = TypeVar('R')
-ConstantT = TypeVar('ConstantT', bound=SetinelConstant, covariant=True)
+ConstantT = TypeVar('ConstantT', bound=SentinelConstant)
 
 
 __all__ = (
