@@ -61,7 +61,7 @@ class Flag(Generic[T]):
         parser.add_argument(*args, dest=self.dest, action='store_true')
 
 
-def _resolve_aliases(alias: str, aliases: Collection[str]) -> Collection[str]:
+def _resolve_aliases(alias: str, aliases: Collection[str]) -> list[str]:
     if alias and aliases:
         raise ValueError("alias and aliases are mutually exclusive.")
 

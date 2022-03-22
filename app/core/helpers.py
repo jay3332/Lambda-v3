@@ -7,6 +7,7 @@ from typing import Any, AsyncIterable, Awaitable, Callable, Iterable, ParamSpec,
 import discord
 from discord.ext import commands
 
+from app.core.flags import FlagMeta
 from app.core.models import Command, GroupCommand
 from app.util.ansi import AnsiStringBuilder
 from app.util.common import setinel
@@ -25,6 +26,7 @@ __all__ = (
     'EDIT',
     'BAD_ARGUMENT',
     'MISSING',
+    'Param',
     'easy_command_callback',
     'command',
     'group',
@@ -37,6 +39,18 @@ BAD_ARGUMENT = setinel('BAD_ARGUMENT', repr='BAD_ARGUMENT')
 ERROR = setinel('ERROR', repr='ERROR')
 
 MISSING = setinel('MISSING', bool=False, repr='MISSING')
+
+
+class Param:
+    """Used to change the current_parameter value in a BadArgument call."""
+
+    def __init__(self, name: str, *, flag: bool = False) -> None:
+        self.name: str = name
+        self.flag: bool = flag
+
+
+class GenericCommandError(commands.BadArgument):
+    pass
 
 
 def clean_interaction_kwargs(kwargs: dict[str, Any]) -> None:
@@ -77,6 +91,7 @@ async def process_message(ctx: Context, payload: Any) -> discord.Message | None:
         payload = [payload]
 
     paginator = None
+    bad_argument = False
 
     for part in payload:
         if part is REPLY:
@@ -86,10 +101,20 @@ async def process_message(ctx: Context, payload: Any) -> discord.Message | None:
             kwargs['edit'] = True
 
         elif part is BAD_ARGUMENT:
-            raise commands.BadArgument(kwargs['content'])
+            bad_argument = True
 
         elif part is ERROR:
-            raise commands.UserInputError(kwargs['content'])
+            raise GenericCommandError(kwargs['content'])
+
+        elif isinstance(part, Param):
+            ctx.current_parameter = (
+                discord.utils.find(
+                    lambda v: isinstance(v.annotation, FlagMeta),
+                    ctx.command.params.values(),
+                )
+                if part.flag
+                else ctx.command.params[part.name]
+            )
 
         elif isinstance(part, discord.Embed):
             kwargs['embeds'].append(part)
@@ -118,6 +143,9 @@ async def process_message(ctx: Context, payload: Any) -> discord.Message | None:
 
         else:
             kwargs['content'] = str(part)
+
+    if bad_argument:
+        raise commands.BadArgument(kwargs['content'])
 
     interaction = getattr(ctx, 'interaction', None)
 

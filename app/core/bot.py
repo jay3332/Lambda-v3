@@ -16,7 +16,9 @@ from discord.ext import commands
 
 from app.core.flags import FlagMeta
 from app.core.help import HelpCommand
+from app.core.helpers import GenericCommandError
 from app.core.models import Cog, Command, Context, PermissionSpec
+from app.core.timers import TimerManager
 from app.database import Database
 from app.util import AnsiColor, AnsiStringBuilder
 from config import allowed_mentions, default_prefix, description, name as bot_name, owner, resolved_token, version
@@ -45,6 +47,7 @@ class Bot(commands.Bot):
         session: ClientSession
         startup_timestamp: datetime
         user_to_member_mapping: dict[int, discord.Member]
+        timers: TimerManager
 
     # TODO: if guild logging is enabled then Intents.all() may have to be used instead
     INTENTS: Final[ClassVar[discord.Intents]] = discord.Intents(
@@ -137,6 +140,12 @@ class Bot(commands.Bot):
         super().reload_extension(name, package=package)
         self.prepare_jishaku_flags()
 
+    def add_command(self, command: Command, /) -> None:
+        if isinstance(command, Command):
+            command.transform_flag_parameters()
+
+        super().add_command(command)
+
     def prepare(self) -> None:
         """Prepares the bot for startup."""
         self.prepare_jishaku_flags()
@@ -145,6 +154,7 @@ class Bot(commands.Bot):
         self.db = Database(loop=self.loop)
         self.session = ClientSession()
         self.user_to_member_mapping = {}
+        self.timers = TimerManager(self)
 
         self.loop.create_task(self._dispatch_first_ready())
         self._load_extensions()
@@ -260,7 +270,7 @@ class Bot(commands.Bot):
         # Parameter-based errors.
 
         if isinstance(error, commands.BadArgument):
-            if isinstance(error, commands.UserInputError):
+            if isinstance(error, GenericCommandError):
                 return await ctx.send(error, reference=ctx.message, delete_after=15)
 
             param = ctx.current_parameter

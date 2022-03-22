@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import inspect
 from functools import wraps
+from traceback import print_stack
 from typing import Any, Awaitable, Callable, ClassVar, Literal, NamedTuple, ParamSpec, TYPE_CHECKING, Union
 
 import discord
 from discord.ext import commands
-from discord.utils import MISSING, maybe_coroutine
+from discord.utils import MISSING, cached_property, maybe_coroutine
 
 from app.core.flags import ConsumeUntilFlag, FlagMeta, Flags
 from app.util import AnsiColor, AnsiStringBuilder
@@ -16,7 +18,7 @@ from app.util.views import ConfirmationView
 if TYPE_CHECKING:
     from datetime import datetime
 
-    from app.core import Bot
+    from app.core import Bot, FlagNamespace
     from app.database import Database
     from app.util.views import AnyUser
 
@@ -99,9 +101,15 @@ class Command(commands.Command):
         super().__init__(func, **kwargs)
         self.add_check(check_permissions)
 
-        self._transform_flag_parameters()
+    def _ensure_assignment_on_copy(self, other: Command) -> Command:
+        super()._ensure_assignment_on_copy(other)
 
-    def _transform_flag_parameters(self) -> None:
+        other._permissions = self._permissions
+        other.custom_flags = self.custom_flags
+
+        return other
+
+    def transform_flag_parameters(self) -> None:
         first_consume_rest = None
 
         for name, param in self.params.items():
@@ -134,7 +142,7 @@ class Command(commands.Command):
 
         if first_consume_rest and self.custom_flags:  # A kw-only has been transformed into a pos-or-kw, reverse this here
             @wraps(original := self.callback)
-            def wrapper(*args: Any, **kwargs: Any) -> Awaitable[Any]:
+            async def wrapper(*args: Any, **kwargs: Any) -> Any:
                 idx = 2 if self.cog else 1
 
                 for i, (arg, (k, v)) in enumerate(zip(args[idx:], self.params.items())):
@@ -143,7 +151,7 @@ class Command(commands.Command):
                         kwargs[k] = arg
                         break
 
-                return original(*args, **kwargs)
+                return await original(*args, **kwargs)
 
             self._callback = wrapper  # leave the params alone
 
@@ -311,6 +319,14 @@ class Context(TypedContext):
     def now(self) -> datetime:
         """Returns when the message of this context was created at."""
         return self.message.created_at
+
+    @cached_property
+    def flags(self) -> Flags:
+        """The flag arguments passed.
+
+        Only available if the flags were a keyword argument.
+        """
+        return discord.utils.find(lambda v: isinstance(v, FlagNamespace), self.kwargs.values())
 
     @staticmethod
     def utcnow() -> datetime:

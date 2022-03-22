@@ -31,12 +31,24 @@ class Migrator:
             return cls.ensure_migrations_directory()
 
     @classmethod
-    def create_migration(cls, name: str) -> str:
-        """Creates a migration file."""
+    def create_migration(cls, name: str, *, stage: bool = True) -> str:
+        """Creates a migration file.
+
+        Parameters
+        ----------
+        name: str
+            The name of the migration.
+        stage: bool
+            Whether to stage the migration file for Git version control.
+            Defaults to ``True``.
+
+            .. note::
+                This uses a blocking subprocess call. Set this to ``False`` if used in an async context.
+        """
         cls.ensure_migrations_directory()
         filename = f'./migrations/{name}-{datetime.datetime.utcnow().timestamp():.0f}.migration.sql'
 
-        print('Attempting to create migration file.')
+        print('Attempting to create migration file...')
         try:
             open(filename, 'w').close()
         except Exception:
@@ -44,6 +56,11 @@ class Migrator:
             raise
         else:
             print(f'Successfully created migration file at {filename}')
+
+        if stage:
+            print('Attempting to add migration to Git...')
+            os.system(f'git add {filename}')
+            print('Successfully added migration to Git.')
 
         return filename
 

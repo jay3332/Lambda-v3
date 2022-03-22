@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from discord.interactions import InteractionChannel
 
     from app.core.bot import Bot
+    from app.core.helpers import Param
     from app.core.models import Command, Cog
 
 P = ParamSpec('P')
@@ -31,14 +32,21 @@ __all__ = (
     'AsyncCallable',
     'CommandResponse',
     'OptionalCommandResponse',
+    'JsonObject',
+    'JsonValue',
 )
 
 AsyncCallable: TypeAlias = Callable[P, Awaitable[R] | AsyncIterable[R]]
 
-CommandResponseFragment: TypeAlias = str | Embed | File | Paginator | View | dict[str, Any] | ConstantT | AnsiStringBuilder
+CommandResponseFragment: TypeAlias = (
+    str | Embed | File | Paginator | View | dict[str, Any] | ConstantT | AnsiStringBuilder | 'Param'
+)
 SingleCommandResponse: TypeAlias = CommandResponseFragment | tuple[CommandResponseFragment, ...]
 CommandResponse: TypeAlias = SingleCommandResponse | AsyncGenerator[SingleCommandResponse, Any]
 OptionalCommandResponse: TypeAlias = CommandResponse | None
+
+JsonValue: TypeAlias = str | int | float | bool | dict[str, 'JsonValue'] | list['JsonValue'] | None
+JsonObject: TypeAlias = dict[str, JsonValue] | list[JsonValue]
 
 
 class TypedInteraction(Interaction):

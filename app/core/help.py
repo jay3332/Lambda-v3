@@ -259,7 +259,7 @@ class HelpCommand(commands.HelpCommand):
         signature.extend(Command.ansi_signature_of(command))
 
         signature = signature.ensure_codeblock(fallback='md').dynamic(ctx)
-        embed.description = f'{signature}\n{body}'
+        embed.description = f'{signature}\n{body.replace("{PREFIX}", ctx.clean_prefix)}'
 
         if command.aliases:
             embed.add_field(name='Aliases', value='\u2002'.join(f'`{alias}`' for alias in command.aliases))

@@ -17,13 +17,13 @@ __all__ = (
 
 
 class _Database:
-    __slots__ = ('_internal_pool', 'loop')
+    __slots__ = ('_internal_pool', '_connect_task', 'loop')
 
     _internal_pool: asyncpg.Pool
 
     def __init__(self, *, loop: asyncio.AbstractEventLoop = None) -> None:
         self.loop: asyncio.AbstractEventLoop = loop or asyncio.get_event_loop()
-        self.loop.create_task(self._connect())
+        self._connect_task: asyncio.Task = self.loop.create_task(self._connect())
 
     async def _connect(self) -> None:
         self._internal_pool = await asyncpg.create_pool(**DatabaseConfig.as_kwargs())
@@ -31,6 +31,9 @@ class _Database:
         async with self.acquire() as conn:
             migrator = Migrator(conn)
             await migrator.run_migrations()
+
+    async def wait(self) -> None:
+        await self._connect_task
 
     @overload
     def acquire(self, *, timeout: float = None) -> Awaitable[asyncpg.Connection]:
