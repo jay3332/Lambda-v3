@@ -5,14 +5,14 @@ from typing import TYPE_CHECKING, TypeAlias
 
 from discord import User
 
-from app.util.common import setinel
+from app.util.common import sentinel
 
 if TYPE_CHECKING:
     from app.core import Context
 
     AnsiIdentifierKwargs: TypeAlias = 'AnsiColor | AnsiBackgroundColor | bool'
 
-CLEAR = setinel('CLEAR', str='\x1b[0m', repr='<clear>', bool=False)
+CLEAR = sentinel('CLEAR', str='\x1b[0m', repr='<clear>', bool=False)
 
 
 class AnsiColor(IntEnum):

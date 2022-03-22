@@ -13,13 +13,13 @@ if TYPE_CHECKING:
 
     T = TypeVar('T')
     KwargT = TypeVar('KwargT')
-    ConstantT = TypeVar('ConstantT', bound='Constant', covariant=True)
+    ConstantT = TypeVar('ConstantT', bound='SetinelConstant')
 
     P = ParamSpec('P')
     R = TypeVar('R')
 
 __all__ = (
-    'setinel',
+    'sentinel',
     'converter',
     'cutoff',
     'pluralize',
@@ -33,21 +33,21 @@ PLURALIZE_REGEX: re.Pattern[str] = re.compile(r'(?P<quantity>-?[0-9.,]+) (?P<thi
 
 
 # This exists for type checkers
-class SetinelConstant:
+class SentinelConstant:
     pass
 
 
-def _create_setinel_callback(v: KwargT) -> Callable[[ConstantT], KwargT]:
+def _create_sentinel_callback(v: KwargT) -> Callable[[ConstantT], KwargT]:
     def wrapper(_self: ConstantT) -> KwargT:
         return v
 
     return wrapper
 
 
-def setinel(name: str, **dunders: KwargT) -> ConstantT:  # "setinel" is a misleading name for this, maybe I should rename it
+def sentinel(name: str, **dunders: KwargT) -> ConstantT:  # "sentinel" is a misleading name for this, maybe I should rename it
     """Creates a constant singleton object."""
-    attrs = {f'__{k}__': _create_setinel_callback(v) for k, v in dunders.items()}
-    return type(name, (SetinelConstant,), attrs)()
+    attrs = {f'__{k}__': _create_sentinel_callback(v) for k, v in dunders.items()}
+    return type(name, (SentinelConstant,), attrs)()
 
 
 def converter(func: Callable[[Context, str], T]) -> Type[Converter | T]:

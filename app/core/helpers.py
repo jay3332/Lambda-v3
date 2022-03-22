@@ -10,7 +10,7 @@ from discord.ext import commands
 from app.core.flags import FlagMeta
 from app.core.models import Command, GroupCommand
 from app.util.ansi import AnsiStringBuilder
-from app.util.common import setinel
+from app.util.common import sentinel
 from app.util.pagination import Paginator
 
 if TYPE_CHECKING:
@@ -33,12 +33,12 @@ __all__ = (
     'cooldown',
 )
 
-EDIT  = setinel('EDIT', repr='EDIT')
-REPLY = setinel('REPLY', repr='REPLY')
-BAD_ARGUMENT = setinel('BAD_ARGUMENT', repr='BAD_ARGUMENT')
-ERROR = setinel('ERROR', repr='ERROR')
+EDIT  = sentinel('EDIT', repr='EDIT')
+REPLY = sentinel('REPLY', repr='REPLY')
+BAD_ARGUMENT = sentinel('BAD_ARGUMENT', repr='BAD_ARGUMENT')
+ERROR = sentinel('ERROR', repr='ERROR')
 
-MISSING = setinel('MISSING', bool=False, repr='MISSING')
+MISSING = sentinel('MISSING', bool=False, repr='MISSING')
 
 
 class Param:
