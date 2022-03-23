@@ -1,22 +1,50 @@
 from __future__ import annotations
 
+import json
 import random
 from datetime import datetime, timedelta
-from typing import ClassVar, Final, TYPE_CHECKING
+from typing import ClassVar, Final, TYPE_CHECKING, Type
 
 import discord.utils
 from dateparser.search import search_dates
 from discord.ext import commands
+from discord.ext.commands import BadArgument
 from discord.http import handle_message_parameters
 from discord.utils import format_dt
 
-from app.core import BAD_ARGUMENT, Cog, Context, Flags, Param, REPLY, Timer, flag, group, store_true
-from app.util import humanize_duration
+from app.core import BAD_ARGUMENT, Cog, Context, ERROR, Flags, Param, REPLY, Timer, command, flag, group, store_true
+from app.util import converter, humanize_duration
+from app.util.common import pluralize
 from app.util.converters import IntervalConverter
 from app.util.pagination import FieldBasedFormatter, Paginator
 from app.util.timezone import TimeZone
 from app.util.types import CommandResponse
 from config import Colors
+
+if TYPE_CHECKING:
+    from asyncpg import Record
+
+    ReminderId: Type[Timer]
+
+
+@converter
+async def ReminderId(ctx: Context, argument: str) -> Timer:
+    try:
+        argument = int(argument)
+    except ValueError:
+        raise BadArgument(
+            'Reminder ID must be a valid integer.'
+            f'See `{ctx.clean_prefix}reminders` to see a list of all of your reminders and their IDs.'
+        )
+
+    timer = await ctx.bot.timers.get_timer(argument)
+    if not timer or timer.event != 'reminder':
+        raise BadArgument('Reminder with the given ID does not exist.')
+
+    if timer.metadata['author_id'] != ctx.author.id:
+        raise BadArgument('This is not your reminder.')
+
+    return timer
 
 
 class ReminderConverter(commands.Converter[tuple[datetime, str]]):
@@ -137,6 +165,9 @@ class Reminders(Cog):
         dt, message, _ = reminder
         message = message or 'something'
 
+        if len(message) > 1400:
+            return BAD_ARGUMENT, 'Reminder message is too long.', Param('reminder')
+
         if dt <= ctx.now:
             return BAD_ARGUMENT, 'That time is in the past.', Param('reminder')
 
@@ -204,6 +235,28 @@ class Reminders(Cog):
         if repeat := metadata['repeat']:
             await self.bot.timers.create(repeat, 'reminder', **metadata)
 
+    @remind.command(name='repeat', aliases=('rp', 'loop'))
+    async def remind_repeat(self, ctx: Context, reminder: ReminderId, *, interval: IntervalConverter) -> CommandResponse:
+        """Set the interval to repeat the reminder.
+
+        Arguments:
+        - `reminder`: The ID of the reminder to repeat. You can view `{PREFIX}remind list` to find the ID of your reminder.
+        - `interval`: The interval at which to repeat this reminder at. Pass in something such as "2 hours".
+        """
+        interval = int(interval.total_seconds())
+
+        if not 1800 <= interval <= 86400 * 7300:
+            return BAD_ARGUMENT, 'Repeating interval must be between 30 minutes and 20 years.'
+
+        query = """
+                UPDATE timers
+                SET metadata = jsonb_set(metadata, '{repeat}', $1::JSONB, true)
+                WHERE id = $2
+                """
+        await ctx.bot.db.execute(query, str(interval), reminder.id)
+
+        return f'Now repeating reminder with ID {reminder.id} every {humanize_duration(interval)}.', REPLY
+
     @remind.command(name='list')
     async def remind_list(self, ctx: Context) -> CommandResponse:
         """View all of your pending reminders."""
@@ -211,9 +264,7 @@ class Reminders(Cog):
                 SELECT
                     id,
                     expires,
-                    metadata->'message' AS message,
-                    metadata->'jump_url' AS jump_url,
-                    metadata->'repeat' AS repeat
+                    metadata
                 FROM
                     timers
                 WHERE
@@ -223,9 +274,23 @@ class Reminders(Cog):
                 ORDER BY
                     expires ASC
                 """
-        records = await self.bot.db.fetch(query, ctx.author.id)
+        records: list[Record | Timer] = await ctx.bot.db.fetch(query, ctx.author.id)
+
+        short_timers = []
+        for timer in self.bot.timers.short_timers:
+            if timer.event != 'reminder':
+                continue
+
+            if timer.metadata['author_id'] != ctx.author.id:
+                continue
+
+            short_timers.append(timer)
+
+        short_timers.sort(key=lambda t: t.expires)
+        records = short_timers + records
+
         if not records:
-            return 'You have no reminders listed.'
+            return 'You have no pending reminders.'
 
         description = (
             'Run `{0}reminder delete <id>` to cancel a reminder.\n'
@@ -234,24 +299,94 @@ class Reminders(Cog):
 
         embed = discord.Embed(color=Colors.primary, description=description, timestamp=ctx.now)
         embed.set_author(name=f'{ctx.author.name}\'s Reminders', icon_url=ctx.author.avatar.url)
-        embed.set_footer(text=f'{len(records)} reminders listed.')
+        embed.set_footer(text=pluralize(f'{len(records)} reminder(s) listed.'))
 
-        # maybe a comprehension was a bad idea
-        fields = [
-            {
-                'name': f'{format_dt(record["expires"])} ({format_dt(record["expires"], "R")}) - ID: {record["id"]}',
-                'value': (
-                    record['message']
-                    + f' [\\[Jump!\\]]({record["jump_url"]})'
-                    + (
-                        f'\n*Repeating every {humanize_duration(record["repeat"])}*'
-                        if record['repeat'] and record['repeat'] != 'null'
-                        else ''
-                    )
-                ),
+        fields = []
+
+        for timer in records:
+            expires, metadata, id = (
+                (timer.expires, timer.metadata, timer.id)
+                if isinstance(timer, Timer)
+                else (timer['expires'], json.loads(timer['metadata']), timer['id'])
+            )
+            message = metadata['message'] + f' [[Jump!]]({metadata["jump_url"]})'
+
+            if repeat := metadata['repeat']:
+                message += f'\n*Repeating every {humanize_duration(repeat)}*'
+
+            fields.append({
+                'name': f'{format_dt(expires)} ({format_dt(expires, "R")}) - ID: {id}',
+                'value': message,
                 'inline': False,
-            }
-            for record in records
-        ]
+            })
 
         return Paginator(ctx, FieldBasedFormatter(embed, fields)), REPLY
+
+    @remind.command(name='delete', aliases=('-', 'remove', 'cancel', 'forget'), brief='Deletes a reminder.')
+    async def remind_delete(self, ctx: Context, *, reminder: ReminderId) -> CommandResponse:
+        """Cancels and deletes a reminder. You cannot restore reminders after they have been deleted.
+
+        Arguments:
+        - `reminder`: The ID of the reminder to cancel. You can view a reminder's ID by running `{PREFIX}reminder list`.
+        """
+        message = reminder.metadata['message']
+
+        if not await ctx.confirm(
+            f'Are you sure you want to cancel the reminder with ID {reminder.id} ({message})',
+            reference=ctx.message,
+            delete_after=True,
+        ):
+            return 'Alright.', REPLY
+
+        await ctx.bot.timers.end_timer(reminder, dispatch=False, cascade=True)
+        return f'Deleted reminder with ID {reminder.id}: {message}', REPLY
+
+    @remind.command(name='clear', aliases=('wipe', 'deleteall', 'removeall', 'reset'))
+    async def remind_clear(self, ctx: Context) -> CommandResponse:
+        """Cancel all of your pending reminders."""
+        if not await ctx.confirm(
+            'Are you sure you want to cancel all of your reminders? You will not be able to recover them.',
+            reference=ctx.message,
+            delete_after=True,
+        ):
+            return 'Alright.', REPLY
+
+        query = """
+                DELETE FROM
+                    timers
+                WHERE
+                    event = 'reminder'
+                AND
+                    (metadata->'author_id')::BIGINT = $1
+                """
+
+        response = await ctx.bot.db.execute(query, ctx.author.id)
+        try:
+            action, amount = response.split()
+            amount = int(amount)
+        except ValueError:
+            return 'Oops, something unexpected happened while trying to process your request. Mind trying that again?', ERROR
+
+        if action != 'DELETE':
+            return f'Expected a DELETE action but got {action!r} instead.', ERROR
+
+        for timer in list(ctx.bot.timers.short_timers):  # We flatten it into a list to avoid iteration-time size mutation
+            if timer.event != 'reminder':
+                continue
+
+            if timer.metadata['author_id'] != ctx.author.id:
+                continue
+
+            del ctx.bot.timers._short_timers[timer.id]
+            amount += 1
+
+        if amount <= 0:
+            return 'You have no reminders to cancel.', REPLY
+
+        ctx.bot.timers.reset_task()
+        return pluralize(f'Successfully cleared all of your reminders. (Deleted {amount} reminder(s))'), REPLY
+
+    @command()
+    async def reminders(self, ctx: Context) -> CommandResponse:
+        """An alias for `remind list`. See `{PREFIX}help remind list` for help on this command."""
+        return await ctx.invoke(self.remind_list)  # type: ignore

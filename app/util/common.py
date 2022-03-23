@@ -52,7 +52,7 @@ def sentinel(name: str, **dunders: KwargT) -> ConstantT:  # "sentinel" is a misl
 
 def converter(func: Callable[[Context, str], T]) -> Type[Converter | T]:
     """Creates a :class:`discord.ext.commands.Converter` that calls the decorated function on the input."""
-    class Wrapper(Converter[T]):
+    class Wrapper(Converter['T']):
         async def convert(self, ctx: Context, argument: str) -> T:
             return await func(ctx, argument)
 

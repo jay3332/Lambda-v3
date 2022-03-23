@@ -5,7 +5,19 @@ import datetime
 import json
 from asyncpg import PostgresConnectionError, Record
 from dataclasses import dataclass
-from typing import Callable, ClassVar, Concatenate, Literal, ParamSpec, TYPE_CHECKING, Type, TypeVar
+from typing import (
+    Any,
+    AsyncIterator,
+    Callable,
+    ClassVar,
+    Concatenate,
+    Iterable,
+    Literal,
+    ParamSpec,
+    TYPE_CHECKING,
+    Type,
+    TypeVar,
+)
 
 import discord
 from discord.utils import format_dt, utcnow
@@ -97,11 +109,53 @@ class TimerManager:
         """
         return self._current
 
+    @property
+    def short_timers(self) -> Iterable[Timer]:
+        """Returns an iterable of all short timers."""
+        return self._short_timers.values()
+
     def reset_task(self) -> None:
         self.__task.cancel()
         self.__task = self._loop.create_task(self.start())
 
-    async def get_timer(self, *, max_days: int = 7) -> Timer | None:
+    async def get_timer(self, id: int) -> Timer | None:
+        """Get a timer by its ID, or return ``None`` if it isn't found."""
+        if id < 0:
+            return self._short_timers.get(id)
+
+        query = 'SELECT * FROM timers WHERE id = $1'
+        record = await self.db.fetchrow(query, id)
+
+        return record and Timer.from_record(record, manager=self)
+
+    async def walk_timers(
+        self,
+        *,
+        event: str | None = None,
+        where: str | None = None,
+        predicate: Callable[[Timer], bool] | None = None,
+        args: Iterable[Any] = (),
+    ) -> AsyncIterator[Timer]:
+        """Iterate over all timers that are of the given event."""
+        args = (*args, event) if event else args
+        clause = f'event = ${len(args)} AND' if event else ''
+
+        query = f'SELECT * FROM timers WHERE {clause} {where or True}'
+
+        for timer in self._short_timers.values():
+            if event and timer.event != event:
+                continue
+
+            if predicate is None or predicate(timer):
+                yield timer
+
+        for record in await self.db.fetch(query, *args):
+            timer = Timer.from_record(record, manager=self)
+
+            if predicate is None or predicate(timer):
+                yield timer
+
+    async def next_timer(self, *, max_days: int = 7) -> Timer | None:
         """Fetches the timer that expires the soonest from the database.
 
         If no timers expire in at most ``max_days`` days, then ``None`` is returned instead.
@@ -118,7 +172,7 @@ class TimerManager:
 
     async def wait(self, *, max_days: int = 7) -> Timer:
         """Waits for the next timer to be available."""
-        if timer := await self.get_timer(max_days=max_days):
+        if timer := await self.next_timer(max_days=max_days):
             self.__event.set()
             return timer
 
@@ -126,7 +180,7 @@ class TimerManager:
         self._current = None
 
         await self.__event.wait()
-        return await self.get_timer(max_days=max_days)
+        return await self.next_timer(max_days=max_days)
 
     async def _start_dispatch(self) -> None:
         await self.db.wait()
@@ -155,14 +209,18 @@ class TimerManager:
         await asyncio.sleep(seconds)
         await self.end_timer(timer)
 
-    async def end_timer(self, timer: Timer) -> None:
+    async def end_timer(self, timer: Timer, *, dispatch: bool = True, cascade: bool = False) -> None:
         """Ends and deletes the specified timer."""
         if timer.is_short_dispatch():
             del self._short_timers[timer.id]
         else:
             await self.db.execute('DELETE FROM timers WHERE id = $1', timer.id)
 
-        await self.dispatch_finished_timer(timer)
+        if cascade and self.current and self.current == timer:
+            self.reset_task()
+
+        if dispatch:
+            await self.dispatch_finished_timer(timer)
 
     async def dispatch_finished_timer(self, timer: Timer) -> None:
         """Dispatches the finished timer."""

@@ -26,6 +26,7 @@ __all__ = (
     'EDIT',
     'BAD_ARGUMENT',
     'MISSING',
+    'ERROR',
     'Param',
     'easy_command_callback',
     'command',
