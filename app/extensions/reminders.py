@@ -5,16 +5,14 @@ import random
 from datetime import datetime, timedelta
 from typing import ClassVar, Final, TYPE_CHECKING, Type
 
-import discord.utils
+import discord
 from dateparser.search import search_dates
 from discord.ext import commands
-from discord.ext.commands import BadArgument
 from discord.http import handle_message_parameters
 from discord.utils import format_dt
 
 from app.core import BAD_ARGUMENT, Cog, Context, ERROR, Flags, Param, REPLY, Timer, command, flag, group, store_true
-from app.util import converter, humanize_duration
-from app.util.common import pluralize
+from app.util.common import converter, humanize_duration, pluralize
 from app.util.converters import IntervalConverter
 from app.util.pagination import FieldBasedFormatter, Paginator
 from app.util.timezone import TimeZone
@@ -32,17 +30,17 @@ async def ReminderId(ctx: Context, argument: str) -> Timer:
     try:
         argument = int(argument)
     except ValueError:
-        raise BadArgument(
+        raise commands.BadArgument(
             'Reminder ID must be a valid integer.'
             f'See `{ctx.clean_prefix}reminders` to see a list of all of your reminders and their IDs.'
         )
 
     timer = await ctx.bot.timers.get_timer(argument)
     if not timer or timer.event != 'reminder':
-        raise BadArgument('Reminder with the given ID does not exist.')
+        raise commands.BadArgument('Reminder with the given ID does not exist.')
 
     if timer.metadata['author_id'] != ctx.author.id:
-        raise BadArgument('This is not your reminder.')
+        raise commands.BadArgument('This is not your reminder.')
 
     return timer
 
@@ -156,6 +154,7 @@ class Reminders(Cog):
         - `--dm`: Whether to DM the reminder to you.
         """
         if flags.timezone and flags.timezone != TimeZone.utc():
+            # noinspection PyShadowingNames
             converter = ReminderConverter(tz=flags.timezone)
             result = await converter.convert(ctx, reminder[-1])
             flags.timezone = TimeZone.utc()
