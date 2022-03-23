@@ -249,9 +249,12 @@ class Reminders(Cog):
             return BAD_ARGUMENT, 'Repeating interval must be between 30 minutes and 20 years.'
 
         query = """
-                UPDATE timers
-                SET metadata = jsonb_set(metadata, '{repeat}', $1::JSONB, true)
-                WHERE id = $2
+                UPDATE
+                    timers
+                SET
+                    metadata = jsonb_set(metadata, '{repeat}', $1::JSONB, true)
+                WHERE
+                    id = $2
                 """
         await ctx.bot.db.execute(query, str(interval), reminder.id)
 
