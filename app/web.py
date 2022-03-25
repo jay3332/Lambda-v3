@@ -80,6 +80,43 @@ async def exchange_oauth() -> JsonObject | tuple[JsonObject, int]:
         return await resp.json()
 
 
+async def _run_discord_request(method: str, route: str) -> JsonObject | tuple[JsonObject, int]:
+    try:
+        token = request.args['token']
+    except KeyError:
+        return {
+           'error': 'Missing access token'
+        }, 400
+
+    token_type = request.args.get('tt', 'Bearer')
+
+    route = Route.BASE + route
+    headers = {
+        'Authorization': f'{token_type} {token}'
+    }
+
+    async with app.bot.session.request(method, route, headers=headers) as resp:
+        if resp.status != 200:
+            text = await resp.text('utf-8')
+            return {
+               'error': f'HTTP {resp.status}: {resp.reason} ({text})'
+           }, 400
+
+        return await resp.json()
+
+
+@app.route('/discord/user', methods=['GET', 'OPTIONS'])
+@handle_cors
+async def get_discord_user() -> JsonObject | tuple[JsonObject, int]:
+    return await _run_discord_request('GET', '/users/@me')
+
+
+@app.route('/discord/guilds', methods=['GET', 'OPTIONS'])
+@handle_cors
+async def get_discord_guilds() -> JsonObject | tuple[JsonObject, int]:
+    return await _run_discord_request('GET', '/users/@me/guilds')
+
+
 @app.after_request
 def after_request(response: Response) -> Response:
     headers = response.headers
