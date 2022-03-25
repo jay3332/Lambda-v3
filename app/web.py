@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import urllib.parse
 from functools import wraps
 from typing import Callable, ParamSpec, TYPE_CHECKING, TypeVar
 
@@ -70,7 +70,7 @@ async def exchange_oauth() -> JsonObject | tuple[JsonObject, int]:
     }
 
     route = Route.BASE + '/oauth2/token'
-    async with app.bot.session.post(route, data=json.dumps(data), headers=headers) as resp:
+    async with app.bot.session.post(route, data=urllib.parse.urlencode(data), headers=headers) as resp:
         if resp.status != 200:
             text = await resp.text('utf-8')
             return {
