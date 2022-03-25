@@ -5,7 +5,7 @@ from functools import wraps
 from typing import Callable, ParamSpec, TYPE_CHECKING, TypeVar
 
 from discord.http import Route
-from quart import Quart, Response, make_response, request
+from quart import Quart, Response, jsonify, make_response, request
 
 from config import client_secret
 
@@ -113,8 +113,8 @@ async def get_discord_user() -> JsonObject | tuple[JsonObject, int]:
 
 @app.route('/discord/guilds', methods=['GET', 'OPTIONS'])
 @handle_cors
-async def get_discord_guilds() -> JsonObject | tuple[JsonObject, int]:
-    return await _run_discord_request('GET', '/users/@me/guilds')
+async def get_discord_guilds() -> Response:
+    return jsonify(await _run_discord_request('GET', '/users/@me/guilds'))
 
 
 @app.after_request
