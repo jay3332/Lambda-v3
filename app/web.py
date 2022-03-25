@@ -30,9 +30,9 @@ def handle_cors(func: Callable[P, R]) -> Callable[P, R | Response]:
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R | Response:
         if request.method == 'OPTIONS':
             response = make_response()
-            response.headers.add("Access-Control-Allow-Origin", "*")
-            response.headers.add('Access-Control-Allow-Headers', "*")
-            response.headers.add('Access-Control-Allow-Methods', "*")
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            response.headers['Access-Control-Allow-Headers'] = '*'
+            response.headers['Access-Control-Allow-Methods'] = '*'
             return response
 
         return func(*args, **kwargs)
@@ -81,6 +81,7 @@ async def exchange_oauth() -> JsonObject | tuple[JsonObject, int]:
 @app.after_request
 def after_request(response: Response) -> Response:
     headers = response.headers
-    headers.add('Access-Control-Allow-Origin', '*')
+    headers['Access-Control-Allow-Origin'] = '*'
+    headers['Access-Control-Allow-Headers'] = '*'
 
     return response
