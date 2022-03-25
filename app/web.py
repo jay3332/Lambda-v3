@@ -71,8 +71,9 @@ async def exchange_oauth() -> JsonObject | tuple[JsonObject, int]:
     route = Route.BASE + '/oauth2/token'
     async with app.bot.session.post(route, json=data, headers=headers) as resp:
         if resp.status != 200:
+            text = await resp.text('utf-8')
             return {
-                'error': f'HTTP {resp.status}: {resp.reason}'
+                'error': f'HTTP {resp.status}: {resp.reason} ({text})'
             }, 400
 
         return await resp.json()
