@@ -27,7 +27,7 @@ app = Quart(__name__)
 
 def handle_cors(func: Callable[P, R]) -> Callable[P, R | Response]:
     @wraps(func)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R | Response:
+    async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R | Response:
         if request.method == 'OPTIONS':
             response = make_response()
             response.headers['Access-Control-Allow-Origin'] = '*'
@@ -35,7 +35,7 @@ def handle_cors(func: Callable[P, R]) -> Callable[P, R | Response]:
             response.headers['Access-Control-Allow-Methods'] = '*'
             return response
 
-        return func(*args, **kwargs)
+        return await func(*args, **kwargs)
 
     return wrapper
 
