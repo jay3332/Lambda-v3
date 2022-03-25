@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from functools import wraps
+from typing import Callable, ParamSpec, TYPE_CHECKING, TypeVar
 
 from discord.http import Route
-from quart import Quart, Response, request
+from quart import Quart, Response, make_response, request
 
 from config import client_secret
 
@@ -16,9 +17,27 @@ if TYPE_CHECKING:
 
     Quart = _Quart
 
+    P = ParamSpec('P')
+    R = TypeVar('R')
+
 __all__ = ('app',)
 
 app = Quart(__name__)
+
+
+def handle_cors(func: Callable[P, R]) -> Callable[P, R | Response]:
+    @wraps(func)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R | Response:
+        if request.method == 'OPTIONS':
+            response = make_response()
+            response.headers.add("Access-Control-Allow-Origin", "*")
+            response.headers.add('Access-Control-Allow-Headers', "*")
+            response.headers.add('Access-Control-Allow-Methods', "*")
+            return response
+
+        return func(*args, **kwargs)
+
+    return wrapper
 
 
 @app.get('/')
@@ -28,7 +47,8 @@ async def index() -> JsonObject:
     }
 
 
-@app.post('/exchange-oauth')
+@app.route('/exchange-oauth', methods=['POST', 'OPTIONS'])
+@handle_cors
 async def exchange_oauth() -> JsonObject | tuple[JsonObject, int]:
     try:
         code = request.args['code']
@@ -62,7 +82,5 @@ async def exchange_oauth() -> JsonObject | tuple[JsonObject, int]:
 def after_request(response: Response) -> Response:
     headers = response.headers
     headers.add('Access-Control-Allow-Origin', '*')
-    headers.add('Access-Control-Allow-Headers', '*')
-    headers.add('Access-Control-Allow-Methods', '*')
 
     return response
