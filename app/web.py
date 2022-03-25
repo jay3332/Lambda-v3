@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from discord.http import Route
-from quart import Quart, request
+from quart import Quart, Response, request
 
 from config import client_secret
 
@@ -56,3 +56,13 @@ async def exchange_oauth() -> JsonObject | tuple[JsonObject, int]:
             }, 400
 
         return await resp.json()
+
+
+@app.after_request
+def after_request(response: Response) -> Response:
+    headers = response.headers
+    headers.add('Access-Control-Allow-Origin', '*')
+    headers.add('Access-Control-Allow-Headers', '*')
+    headers.add('Access-Control-Allow-Methods', '*')
+
+    return response
