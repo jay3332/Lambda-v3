@@ -72,6 +72,7 @@ allowed_mentions: AllowedMentions = AllowedMentions(everyone=False, users=True, 
 
 token: str = env('DISCORD_TOKEN')
 beta_token: str = env('DISCORD_BETA_TOKEN')
+client_secret: str = env('DISCORD_CLIENT_SECRET')
 
 resolved_token: str = beta_token if beta else token
 

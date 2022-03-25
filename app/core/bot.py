@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import sys
+from platform import system
 from typing import Any, ClassVar, Final, TYPE_CHECKING
 
 import discord
@@ -21,7 +22,11 @@ from app.core.models import Cog, Command, Context, PermissionSpec
 from app.core.timers import TimerManager
 from app.database import Database
 from app.util import AnsiColor, AnsiStringBuilder
+from app.web import app as web_app
 from config import allowed_mentions, default_prefix, description, name as bot_name, owner, resolved_token, version
+
+if TYPE_CHECKING:
+    from quart import Quart
 
 __all__ = (
     'LOG',
@@ -48,6 +53,7 @@ class Bot(commands.Bot):
         startup_timestamp: datetime
         user_to_member_mapping: dict[int, discord.Member]
         timers: TimerManager
+        web: Quart
 
     # TODO: if guild logging is enabled then Intents.all() may have to be used instead
     INTENTS: Final[ClassVar[discord.Intents]] = discord.Intents(
@@ -77,6 +83,7 @@ class Bot(commands.Bot):
         )
 
         self._BotBase__cogs = commands.core._CaseInsensitiveDict()
+        self._web_run_task: asyncio.Task | None = None
         self.prepare()
 
     async def resolve_command_prefix(self, message: discord.Message) -> list[str]:
@@ -155,6 +162,9 @@ class Bot(commands.Bot):
         self.session = ClientSession()
         self.user_to_member_mapping = {}
         self.timers = TimerManager(self)
+
+        web_app.bot = self
+        self.web = web_app
 
         self.loop.create_task(self._dispatch_first_ready())
         self._load_extensions()
@@ -344,9 +354,18 @@ class Bot(commands.Bot):
         ansi = builder.ensure_codeblock().dynamic(ctx)
         await ctx.send(f'Could not parse your command input properly:\n{ansi}', reference=ctx.message)
 
+    async def close_web_app(self) -> None:
+        """Close the Quart web application."""
+        if self._web_run_task is not None:
+            await self.web.shutdown()
+
+            if not self._web_run_task.done():
+                self._web_run_task.cancel()
+
     async def close(self) -> None:
         """Closes this bot and it's aiohttp ClientSession."""
         await self.session.close()
+        await self.close_web_app()
         await super().close()
 
         pending = asyncio.all_tasks()
@@ -360,4 +379,8 @@ class Bot(commands.Bot):
 
     def run(self) -> None:
         """Runs the bot."""
+        if system() == 'Linux':
+            # only run the web app on linux for now
+            self._web_run_task = self.loop.create_task(self.web.run_task('0.0.0.0', 8080))
+
         return super().run(resolved_token)
