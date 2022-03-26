@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import inspect
 from functools import wraps
-from typing import Any, AsyncIterable, Awaitable, Callable, Iterable, ParamSpec, TYPE_CHECKING, TypeAlias, TypeVar
+from typing import Any, AsyncIterable, Awaitable, Callable, Collection, Iterable, ParamSpec, TYPE_CHECKING, TypeAlias, \
+    TypeVar
 
 import discord
 from discord.ext import commands

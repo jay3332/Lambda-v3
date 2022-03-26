@@ -4,7 +4,6 @@ from sys import argv
 
 import asyncpg
 
-from app.core.bot import Bot
 from app.database.migrations import Migrator
 from config import DatabaseConfig
 
@@ -34,4 +33,6 @@ if __name__ == '__main__':
                 case _:
                     raise RuntimeError('Invalid command.')
         case _:
+            from app.core.bot import Bot
+
             Bot().run()

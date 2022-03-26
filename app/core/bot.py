@@ -23,7 +23,7 @@ from app.core.timers import TimerManager
 from app.database import Database
 from app.util import AnsiColor, AnsiStringBuilder
 from app.web import app as web_app
-from config import allowed_mentions, default_prefix, description, name as bot_name, owner, resolved_token, version
+from config import allowed_mentions, description, name as bot_name, owner, resolved_token, version
 
 if TYPE_CHECKING:
     from quart import Quart
@@ -88,7 +88,8 @@ class Bot(commands.Bot):
 
     async def resolve_command_prefix(self, message: discord.Message) -> list[str]:
         """Resolves a command prefix from a message."""
-        return commands.when_mentioned_or(default_prefix)(self, message)
+        record = await self.db.get_guild_record(message.guild.id)
+        return commands.when_mentioned_or(*record.prefixes)(self, message)
 
     async def _dispatch_first_ready(self) -> None:
         """Waits for the inbound READY gateway event, then dispatches the `first_ready` event."""

@@ -96,6 +96,12 @@ def check_permissions(ctx: Context) -> bool:
 class Command(commands.Command):
     def __init__(self, func: AsyncCallable[..., Any], **kwargs: Any) -> None:
         self._permissions: PermissionSpec = PermissionSpec.new()
+        if user_permissions := kwargs.pop('user_permissions', None):
+            self._permissions.user.update(user_permissions)
+
+        if bot_permissions := kwargs.pop('bot_permissions', None):
+            self._permissions.bot.update(bot_permissions)
+
         self.custom_flags: FlagMeta[Any] | None = None
 
         super().__init__(func, **kwargs)
