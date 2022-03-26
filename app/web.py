@@ -176,7 +176,7 @@ async def _authorize_guilds(token: str, token_type: str, user_id: int) -> JsonOb
     return res
 
 
-@app.route('/data/<int: guild_id>', methods=['GET', 'OPTIONS'])
+@app.route('/data/<int:guild_id>', methods=['GET', 'OPTIONS'])
 @handle_cors
 async def guild_data(guild_id: int) -> JsonObject | tuple[JsonObject, int]:
     try:
