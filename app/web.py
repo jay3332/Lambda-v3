@@ -113,8 +113,31 @@ async def get_discord_user() -> JsonObject | tuple[JsonObject, int]:
 
 @app.route('/discord/guilds', methods=['GET', 'OPTIONS'])
 @handle_cors
-async def get_discord_guilds() -> Response:
-    return jsonify(await _run_discord_request('GET', '/users/@me/guilds'))
+async def get_discord_guilds() -> Response | JsonObject | tuple[JsonObject, int]:
+    res = await _run_discord_request('GET', '/users/@me/guilds')
+    if isinstance(res, dict):
+        return res
+
+    try:
+        user_id = int(request.args['user_id'])
+    except (KeyError, ValueError):
+        return {
+            'error': 'Missing user ID'
+        }, 400
+
+    for guild in res:
+        native = app.bot.get_guild(int(guild['id']))
+        if native is None:
+            status = 0  # Unavailable because I'm not in the guild
+        else:
+            permissions = native.get_member(user_id).guild_permissions
+            if permissions.administrator or permissions.manage_guild:
+                status = 2  # Available
+            else:
+                status = 1  # Unavailable due to lack of permissions
+        guild['status'] = status
+
+    return jsonify(res)
 
 
 @app.after_request
