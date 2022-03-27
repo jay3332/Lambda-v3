@@ -40,7 +40,7 @@ def handle_cors(func: Callable[P, R]) -> Callable[P, R | Response]:
     @wraps(func)
     async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R | Response:
         if request.method == 'OPTIONS':
-            response = make_response()
+            response = await make_response()
             response.headers['Access-Control-Allow-Origin'] = '*'
             response.headers['Access-Control-Allow-Headers'] = '*'
             response.headers['Access-Control-Allow-Methods'] = '*'
@@ -113,7 +113,7 @@ async def _run_discord_request(method: str, route: str, req: Request = None) -> 
             text = await resp.text('utf-8')
             return {
                'error': f'HTTP {resp.status}: {resp.reason} ({text})'
-           }, 400
+            }, 400
 
         return await resp.json()
 
