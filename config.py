@@ -65,6 +65,7 @@ name: str = 'Lambda'
 version: VersionInfo = VersionInfo(major=3, minor=0, micro=0, releaselevel='alpha', serial=0)
 description: str = 'A multipurpose bot for Discord'
 support_server: str = 'https://discord.gg/vuAPY6MQF5'
+website: str = 'https://lambdabot.cf'
 
 owner: Collection[int] | int = 414556245178056706
 default_prefix: Collection[str] | str = '>'

@@ -11,7 +11,7 @@ from app.util import AnsiColor, AnsiStringBuilder
 from app.util.common import cutoff, humanize_duration, pluralize
 from app.util.pagination import Paginator, PaginatorView, FieldBasedFormatter
 from app.util.views import UserView
-from config import Colors, support_server
+from config import Colors, support_server, website
 
 if TYPE_CHECKING:
     from app.core import Cog, Context, GroupCommand
@@ -199,7 +199,8 @@ class HelpCommand(commands.HelpCommand):
         description = (
             f'{ctx.bot.description}\n\nI currently have {len(ctx.bot.commands)} commands registered.\n'
             f'Use `{ctx.clean_prefix}help <command>` to see more information about a command.\n\n'
-            f'[**Invite Lambda**]({url} "{len(ctx.bot.guilds)} guilds") | [**Support Server**]({support_server})'
+            f'[**Invite Lambda**]({url} "{len(ctx.bot.guilds)} guilds") | [**Support Server**]({support_server}) | '
+            f'[**Website & Dashboard**]({website})'
         )
 
         embed = discord.Embed(color=Colors.primary, description=description, timestamp=ctx.now)

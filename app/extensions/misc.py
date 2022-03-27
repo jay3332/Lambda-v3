@@ -5,7 +5,7 @@ from app.util.ansi import AnsiStringBuilder, AnsiColor
 from app.util.common import humanize_small_duration
 from app.util.structures import Timer
 from app.util.types import CommandResponse
-from config import support_server
+from config import support_server, website
 
 
 class Miscellaneous(Cog):
@@ -67,5 +67,16 @@ class Miscellaneous(Cog):
         view = discord.ui.View()
         view.add_item(discord.ui.Button(label='Invite me to your server', url=url))
         view.add_item(discord.ui.Button(label='Join the support server', url=support_server))
+        view.add_item(discord.ui.Button(label='Website/Dashboard', url=website))
 
-        return 'You can right click on one of the buttons below to copy the link.', view, REPLY
+        return 'You can right click on one of the buttons below to copy its link.', view, REPLY
+
+    @command(aliases={'dash', 'dboard', 'website'})
+    @cooldown(rate=2, per=3)
+    async def dashboard(self, ctx: Context) -> CommandResponse:
+        """Link to the dashboard."""
+        view = discord.ui.View()
+        view.add_item(discord.ui.Button(label='Go to Dashboard', url=website + '/guild/' + str(ctx.guild.id)))
+        view.add_item(discord.ui.Button(label='Website', url=website))
+
+        return 'You can right click on one of the buttons below to copy its link.', view, REPLY
