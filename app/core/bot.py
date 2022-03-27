@@ -92,7 +92,9 @@ class Bot(commands.Bot):
             return commands.when_mentioned_or(default_prefix)(self, message)
 
         record = await self.db.get_guild_record(message.guild.id)
-        return commands.when_mentioned_or(*record.prefixes)(self, message)
+        prefixes = sorted(record.prefixes, key=len, reverse=True)
+
+        return commands.when_mentioned_or(*prefixes)(self, message)
 
     async def _dispatch_first_ready(self) -> None:
         """Waits for the inbound READY gateway event, then dispatches the `first_ready` event."""
