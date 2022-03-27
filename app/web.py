@@ -247,6 +247,11 @@ async def add_prefix(guild_id: int) -> JsonObject | tuple[JsonObject, int]:
         }, 400
 
     record = await app.bot.db.get_guild_record(guild_id)
+    if len(record.prefixes) >= 25:
+        return {
+            'error': 'Prefix limit reached (Max: 25)'
+        }, 400
+
     if prefix in record.prefixes:
         return {
             'error': 'Prefix already exists',
