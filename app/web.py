@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import urllib.parse
 from collections import defaultdict
 from functools import wraps
@@ -27,6 +28,8 @@ __all__ = ('app',)
 
 app = Quart(__name__)
 app.authorized_guilds = defaultdict(set)
+
+MENTION_REGEX: re.Pattern[str] = re.compile(r'<@!?\d+>')
 
 
 class HTTPError(Exception):
@@ -176,9 +179,7 @@ async def _authorize_guilds(token: str, token_type: str, user_id: int) -> JsonOb
     return res
 
 
-@app.route('/data/<int:guild_id>', methods=['GET', 'OPTIONS'])
-@handle_cors
-async def guild_data(guild_id: int) -> JsonObject | tuple[JsonObject, int]:
+async def _handle_authorization(guild_id: int) -> tuple[JsonObject, int] | None:
     try:
         token = request.args['token']
     except KeyError:
@@ -203,8 +204,85 @@ async def guild_data(guild_id: int) -> JsonObject | tuple[JsonObject, int]:
             'error': 'Unauthorized'
         }, 401
 
+
+@app.route('/data/<int:guild_id>', methods=['GET', 'OPTIONS'])
+@handle_cors
+async def guild_data(guild_id: int) -> JsonObject | tuple[JsonObject, int]:
+    if err := await _handle_authorization(guild_id):
+        return err
+
     record = await app.bot.db.get_guild_record(guild_id)
     return {
+        'prefixes': record.prefixes,
+    }
+
+
+@app.route('/prefixes/<int:guild_id>', methods=['PUT', 'OPTIONS'])
+@handle_cors
+async def add_prefix(guild_id: int) -> JsonObject | tuple[JsonObject, int]:
+    if err := await _handle_authorization(guild_id):
+        return err
+
+    json = await request.get_json()
+    try:
+        prefix = json['prefix']
+    except KeyError:
+        return {
+            'error': 'Missing prefix'
+        }, 400
+
+    if not isinstance(prefix, str):
+        return {
+            'error': 'Prefix must be a string',
+        }, 400
+
+    if MENTION_REGEX.search(prefix):
+        return {
+            'error': 'Prefix cannot contain a mention',
+        }, 400
+
+    if len(prefix) > 100:
+        return {
+            'error': 'Prefix must be 100 characters or less',
+        }, 400
+
+    record = await app.bot.db.get_guild_record(guild_id)
+    if prefix in record.prefixes:
+        return {
+            'error': 'Prefix already exists',
+        }, 400
+
+    await record.append(prefixes=prefix)
+    return {
+        'success': True,
+        'prefixes': record.prefixes,
+    }
+
+
+@app.route('/prefixes/<int:guild_id>', methods=['DELETE', 'OPTIONS'])
+@handle_cors
+async def remove_prefix(guild_id: int) -> JsonObject | tuple[JsonObject, int]:
+    if err := await _handle_authorization(guild_id):
+        return err
+
+    json = await request.get_json()
+    try:
+        prefix = json['prefix']
+    except KeyError:
+        return {
+            'error': 'Missing prefix to remove'
+        }, 400
+
+    record = await app.bot.db.get_guild_record(guild_id)
+    if prefix not in record.prefixes:
+        return {
+            'error': 'Prefix does not exist'
+        }, 400
+
+    record.prefixes.remove(prefix)
+    await record.update(prefixes=record.prefixes)
+    return {
+        'success': True,
         'prefixes': record.prefixes,
     }
 

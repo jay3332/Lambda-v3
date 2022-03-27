@@ -59,6 +59,9 @@ class Settings(Cog):
         if any(self.MENTION_REGEX.search(prefix) for prefix in prefixes):
             return 'You cannot have mentions in your prefixes.', BAD_ARGUMENT
 
+        if any(len(prefix) > 100 for prefix in prefixes):
+            return 'Prefixes cannot be longer than 100 characters.', BAD_ARGUMENT
+
         record.prefixes.extend(prefixes)
         await record.update(prefixes=list(set(record.prefixes)))
 
@@ -135,11 +138,16 @@ class Settings(Cog):
         if not prefixes:
             return 'Please specify prefixes to set.', BAD_ARGUMENT
 
+        prefixes = list(set(prefixes))
+
         if len(prefixes) > 25:
             return 'You cannot have more than 25 prefixes at once.', BAD_ARGUMENT
 
         if any(self.MENTION_REGEX.search(prefix) for prefix in prefixes):
             return 'You cannot have mentions in your prefixes.', BAD_ARGUMENT
+
+        if any(len(prefix) > 100 for prefix in prefixes):
+            return 'Prefixes cannot be longer than 100 characters.', BAD_ARGUMENT
 
         record = await self.bot.db.get_guild_record(ctx.guild.id)
         await record.update(prefixes=prefixes)
