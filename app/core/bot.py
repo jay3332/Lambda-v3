@@ -22,6 +22,7 @@ from app.core.models import Cog, Command, Context, PermissionSpec
 from app.core.timers import TimerManager
 from app.database import Database
 from app.util import AnsiColor, AnsiStringBuilder
+from app.util.pillow import FontManager
 from app.web import app as web_app
 from config import allowed_mentions, default_prefix, description, name as bot_name, owner, resolved_token, version
 
@@ -49,6 +50,7 @@ class Bot(commands.Bot):
         from datetime import datetime
 
         db: Database
+        fonts: FontManager
         session: ClientSession
         startup_timestamp: datetime
         user_to_member_mapping: dict[int, discord.Member]
@@ -165,6 +167,7 @@ class Bot(commands.Bot):
         self.prepare_logger()
 
         self.db = Database(loop=self.loop)
+        self.fonts = FontManager()
         self.session = ClientSession()
         self.user_to_member_mapping = {}
         self.timers = TimerManager(self)

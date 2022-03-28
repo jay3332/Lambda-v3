@@ -9,7 +9,7 @@ from config import DatabaseConfig
 from .migrations import Migrator
 
 if TYPE_CHECKING:
-    pass
+    from app.util.types import LevelingConfig, LevelingData, RankCard
 
 __all__ = (
     'Database',
@@ -89,6 +89,79 @@ class Database(_Database):
 
         return record
 
+    def get_all_leveling_configurations(self, *, connection: asyncpg.Connection | None = None) -> Awaitable[list[LevelingConfig]]:
+        connection = connection or self
+        return connection.fetch('SELECT * FROM level_config;')
+
+    async def get_leveling_stats(
+        self,
+        user_id: int,
+        guild_id: int,
+        *,
+        connection: asyncpg.Connection | None = None,
+    ) -> LevelingData:
+        async with connection or self.acquire() as connection:
+            query = """
+                    SELECT 
+                        user_id, 
+                        level, 
+                        xp, 
+                        RANK() OVER (
+                            ORDER BY 
+                                level DESC, 
+                                xp DESC
+                        ) AS rank 
+                    FROM 
+                        levels 
+                    WHERE 
+                        guild_id = $2 
+                    ORDER BY 
+                        (user_id = $1) DESC
+                    """
+
+            data = await connection.fetchrow(query, user_id, guild_id)
+            if data['user_id'] == user_id:
+                return data
+
+            query = """
+                    INSERT INTO levels (user_id, guild_id, level, xp)
+                    VALUES
+                        ($1, $2, 0, 0)
+                    """
+
+            await connection.execute(query, user_id, guild_id)
+            return await self.get_leveling_stats(user_id, guild_id, connection=connection)
+
+    async def get_rank_card(self, user_id: int, *, connection: asyncpg.Connection | None = None) -> RankCard:
+        async with connection or self.acquire() as connection:
+            query = """
+                    INSERT INTO rank_cards (user_id)
+                    VALUES
+                        ($1)
+                    ON CONFLICT (user_id)
+                    DO UPDATE
+                        SET user_id = $1
+                    RETURNING
+                        rank_cards.*
+                    """
+
+            return await connection.fetchrow(query, user_id)
+
+    async def get_level_config(self, guild_id: int, *, connection: asyncpg.Connection | None = None) -> LevelingConfig:
+        async with connection or self.acquire() as connection:
+            query = """
+                    INSERT INTO level_config (guild_id)
+                    VALUES
+                        ($1)
+                    ON CONFLICT (guild_id)
+                    DO UPDATE
+                        SET guild_id = $1
+                    RETURNING
+                        level_config.*
+                    """
+
+            return await connection.fetchrow(query, guild_id)
+
 
 class GuildRecord:
     """Represents a guild record in the database."""
@@ -101,9 +174,12 @@ class GuildRecord:
     async def fetch(self) -> GuildRecord:
         """Fetches the guild record from the database."""
         query = """
-                INSERT INTO guilds (guild_id) VALUES ($1)
+                INSERT INTO guilds (guild_id)
+                VALUES
+                    ($1)
                 ON CONFLICT (guild_id)
-                DO UPDATE SET guild_id = $1
+                DO UPDATE
+                    SET guild_id = $1
                 RETURNING *
                 """
 
@@ -116,7 +192,13 @@ class GuildRecord:
             await self.fetch()
         return self
 
-    async def _update(self, key: Callable[[tuple[int, str]], str], values: dict[str, Any], *, connection: asyncpg.Connection | None = None) -> GuildRecord:
+    async def _update(
+        self,
+        key: Callable[[tuple[int, str]], str],
+        values: dict[str, Any],
+        *,
+        connection: asyncpg.Connection | None = None,
+    ) -> GuildRecord:
         query = """
                 UPDATE guilds SET {} WHERE guild_id = $1
                 RETURNING *;

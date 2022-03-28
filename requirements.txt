@@ -3,8 +3,11 @@ git+https://github.com/Gorialis/jishaku
 asyncpg
 beautifulsoup4
 dateparser
+fontTools
 maturin
 lxml
+Pillow
+pilmoji
 psutil
 python-dotenv
 pytz
