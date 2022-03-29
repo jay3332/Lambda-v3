@@ -59,6 +59,21 @@ def converter(func: Callable[[Context, str], T]) -> Type[Converter | T]:
     return Wrapper
 
 
+def ordinal(number: int) -> str:
+    """Convert a number to its ordinal representation."""
+    if number % 100 // 10 != 1:
+        if number % 10 == 1:
+            return f"{number}st"
+
+        if number % 10 == 2:
+            return f"{number}nd"
+
+        if number % 10 == 3:
+            return f"{number}rd"
+
+    return f"{number}th"
+
+
 def cutoff(string: str, /, max_length: int = 64, *, exact: bool = False) -> str:
     """Cuts-off a string at a certain length, and if it has been cutoff, append "..." to it."""
     if len(string) <= max_length:
@@ -161,3 +176,11 @@ def executor_function(func: Callable[P, R]) -> Callable[P, Awaitable[R]]:
         return asyncio.to_thread(func, *args, **kwargs)
 
     return wrapper
+
+
+def preinstantiate(*args: Any, **kwargs: Any) -> Callable[[Type[T]], T]:
+    """Preinstantiates a class with the given arguments."""
+    def decorator(cls: Type[T]) -> T:
+        return cls(*args, **kwargs)
+
+    return decorator

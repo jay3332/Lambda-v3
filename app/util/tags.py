@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import datetime
 import inspect
+import json
+import random
 import re
 from typing import (
     Any,
@@ -9,29 +12,52 @@ from typing import (
     Concatenate,
     Generic,
     Iterator,
-    NamedTuple,
-    ParamSpec,
-    Type,
-    TypeAlias,
+    NamedTuple, ParamSpec,
+    Protocol, Type,
     TypeVar,
     TYPE_CHECKING,
 )
 
-from discord.utils import maybe_coroutine
+import discord
+from discord.ext.commands import ColourConverter
+from discord.utils import maybe_coroutine, valid_icon_size
+
+from app.util import cutoff
+from app.util.common import ordinal, preinstantiate
 
 if TYPE_CHECKING:
-    Environment: TypeAlias = Any
-    EnvironmentT = TypeVar('EnvironmentT', bound=Environment)
+    from app.core import Context
+
+__all__ = (
+    'transform',
+    'Transformer',
+    'TransformerRegistry',
+    'TransformerCallback',
+    'Environment',
+    'Parser',
+    'parse',
+    'DiscordMetadata',
+    'LevelingMetadata',
+    'RandomTransformer',
+    'MetaTransformer',
+    'UserTransformer',
+    'LevelingTransformer',
+    'EmbedTransformer',
+)
 
 P = ParamSpec('P')
 T = TypeVar('T')
+EnvironmentT = TypeVar('EnvironmentT', bound='Environment')
 TransformerT = TypeVar('TransformerT', bound='Transformer')
 
 
-def transform(*names: str) -> Callable[[Callable[Concatenate[Transformer, Environment, P], T]], TransformerCallback[P, T]]:
+def transform(*names: str) -> Callable[
+    [Callable[Concatenate[Transformer, Environment, P], T]],
+    TransformerCallback[EnvironmentT, P, T],
+]:
     """Creates a transformer callback from a function"""
 
-    def decorator(func: Callable[Concatenate[Transformer, Environment, P], T]) -> TransformerCallback[P, T]:
+    def decorator(func: Callable[Concatenate[Transformer, Environment, P], T]) -> TransformerCallback[EnvironmentT, P, T]:
         nonlocal names
 
         if not names:
@@ -42,7 +68,59 @@ def transform(*names: str) -> Callable[[Callable[Concatenate[Transformer, Enviro
     return decorator
 
 
-class TransformerCallback(Generic[P, T]):
+class DiscordMetadata(NamedTuple):
+    ctx: Context
+
+    @property
+    def user(self) -> discord.Member:
+        return self.ctx.author
+
+    @property
+    def guild(self) -> discord.Guild:
+        return self.ctx.guild
+
+    @property
+    def channel(self) -> discord.TextChannel:
+        return self.ctx.channel
+
+
+class LevelingMetadata(NamedTuple):
+    message: discord.Message
+    level: int
+
+    @property
+    def user(self) -> discord.Member:
+        return self.message.author
+
+    @property
+    def guild(self) -> discord.Guild:
+        return self.message.guild
+
+    @property
+    def channel(self) -> discord.TextChannel:
+        return self.message.channel
+
+
+class Environment(Generic[T]):
+    """Represents a tag parsing environment."""
+
+    def __init__(self, metadata: T) -> None:
+        self.metadata: T = metadata
+        self.vars: dict[str, Any] = {}
+        self.embed: discord.Embed | None = None
+
+    def get_embed(self) -> discord.Embed:
+        if self.embed is None:
+            self.embed = discord.Embed()
+
+        return self.embed
+
+    @property
+    def ctx(self) -> Context:
+        return self.metadata.ctx
+
+
+class TransformerCallback(Generic[EnvironmentT, P, T]):
     """Stores the callback for when the tag is transformed."""
 
     def __init__(
@@ -87,10 +165,10 @@ class TransformerCallback(Generic[P, T]):
 
     def transform(self, *names: str) -> Callable[
         [Callable[Concatenate[Transformer, Environment, P], T]],
-        TransformerCallback[P, T],
+        TransformerCallback[EnvironmentT, P, T],
     ]:
         """Creates a transformer callback from a function"""
-        def decorator(func: Callable[Concatenate[Transformer, Environment, P], T]) -> TransformerCallback[P, T]:
+        def decorator(func: Callable[Concatenate[Transformer, Environment, P], T]) -> TransformerCallback[EnvironmentT, P, T]:
             nonlocal names
 
             if not names:
@@ -115,13 +193,13 @@ class TransformerCallback(Generic[P, T]):
         return self.callback(self.transformer, env, *args, **kwargs)
 
 
-class Transformer:
+class Transformer(Generic[EnvironmentT]):
     """Interface to transform tags into text."""
 
     if TYPE_CHECKING:
-        transformers: list[TransformerCallback]
+        transformers: list[TransformerCallback[EnvironmentT, Any, Any]]
 
-    def __new__(cls: Type[Transformer]) -> Transformer:
+    def __new__(cls: Type[Transformer[EnvironmentT]]) -> Transformer[EnvironmentT]:
         self = super().__new__(cls)
         self.transformers = []
 
@@ -135,12 +213,12 @@ class Transformer:
 
         return self
 
-    def walk_transformers(self) -> Iterator[TransformerCallback]:
+    def walk_transformers(self) -> Iterator[TransformerCallback[EnvironmentT, Any, Any]]:
         for transformer in self.transformers:
             yield transformer
             yield from transformer.walk_children()
 
-    def get_transformer_callback(self, name: str) -> TransformerCallback | None:
+    def get_transformer_callback(self, name: str) -> TransformerCallback[EnvironmentT, Any, Any] | None:
         """Returns the transformer callback for the given name."""
         name = name.casefold()
 
@@ -174,9 +252,14 @@ class TransformerRegistry(Generic[TransformerT]):
         self.transformers.remove(transformer)
 
 
-class Node(NamedTuple):
-    start: int
-    end: int
+class Node:
+    def __init__(self, start: int, end: int) -> None:
+        self.start: int = start
+        self.end: int = end
+
+    def __iter__(self) -> Iterator[int]:
+        yield self.start
+        yield self.end
 
     def __len__(self) -> int:
         return self.end - self.start
@@ -193,43 +276,408 @@ class Parser:
     @staticmethod
     def walk_nodes(text: str) -> Iterator[Node]:
         buffers = []
+        can_increase_modifier = False
         modifier_count = 0
 
         for i, char in enumerate(text):
             if i > 0 and text[i - 1] == '\\':
                 continue
 
-            if char == '(':
+            if char == '(' and can_increase_modifier:
                 modifier_count += 1
 
-            elif char == ')':
+            elif char == ')' and can_increase_modifier and modifier_count > 0:
                 modifier_count -= 1
 
-            if char == '{' and modifier_count <= 0:
-                buffers.append(i)
+            if modifier_count > 0:
+                continue
 
-            elif char == '}' and modifier_count <= 0:
+            if char == '{':
+                buffers.append(i)
+                can_increase_modifier = True
+
+            elif char == '}':
                 start = buffers.pop()
                 yield Node(start, i + 1)
+                can_increase_modifier = False
+
+            elif char == ':':
+                can_increase_modifier = False
 
     @classmethod
-    async def parse(cls, text: str, *, env: EnvironmentT, transformers: TransformerRegistry) -> str:
+    async def parse(cls, text: str, *, env: EnvironmentT, transformers: TransformerRegistry, silent: bool = False) -> str:
         """Parses the given text and returns the transformed text."""
-        for node in cls.walk_nodes(text):
-            text = text[node.start:node.end].strip('{}')
-            tag, _, args = text.partition(':')
+        nodes = list(cls.walk_nodes(text))
 
-            if args:
-                args = [
-                    arg.replace('\\;', ';')
-                    for arg in cls.ARGUMENT_REGEX.split(args)
-                ]
-            else:
-                args = []
+        for i, node in enumerate(nodes, start=1):
+            start, end = node
+            entry = text[start:end].removeprefix('{').removesuffix('}')
+            tag, _, args = entry.partition(':')
+
+            args = [
+                arg.replace('\\;', ';')
+                for arg in cls.ARGUMENT_REGEX.split(args)
+            ] if args else []
 
             tag, _, modifier = tag.partition('(')
             modifier = modifier.removesuffix(')')
             callback = transformers.get_transformer_callback(tag.strip())
-            repl = await maybe_coroutine(callback, env, modifier, *args)
+            if callback is None:
+                continue
+
+            try:
+                repl = await maybe_coroutine(callback, env, modifier, *args)
+            except Exception as exc:
+                if silent:
+                    continue
+
+                repl = f'{{error: {exc}}}'
+            repl = str(repl) if repl is not None else ''
+
+            offset = len(repl) - len(node)
+            text = text[:start] + repl + text[end:]
+
+            if not offset:
+                continue
+
+            for child in nodes[i:]:
+                if child.start > start:
+                    child.start += offset
+
+                if child.end > start:
+                    child.end += offset
+
+        return text
 
 
+parse = Parser.parse
+
+
+@preinstantiate()
+class MetaTransformer(Transformer[Any]):
+    @transform('char-at', 'charAt', 'getchar', 'char')
+    async def char_at(self, _, modifier: str, *args: str) -> str:
+        if not modifier or not args:
+            raise ValueError('char-at requires a modifier (index) and an argument (string)')
+
+        if len(args) > 1:
+            raise ValueError('char-at requires a single argument')
+
+        try:
+            modifier = int(modifier)
+        except ValueError:
+            raise ValueError('index must be an integer')
+
+        try:
+            return args[0][modifier - 1 if modifier > 0 else modifier]
+        except IndexError:
+            raise IndexError('character out of range')
+
+    @transform('escape')
+    async def escape(self, _, modifier: str, *args: str) -> str:
+        if modifier:
+            return modifier
+
+        if not args:
+            return ''
+
+        return '\\;'.join(args)
+
+    @transform('length', 'len', 'size')
+    async def length(self, _, modifier: str, *args: str) -> int:
+        if not args:
+            args = modifier,
+
+        return len(args[0])
+
+    @transform('lowercase', 'lower')
+    async def lowercase(self, _, modifier: str, *args: str) -> str:
+        if not args:
+            args = modifier,
+
+        return args[0].lower()
+
+    @transform('uppercase', 'upper')
+    async def uppercase(self, _, modifier: str, *args: str) -> str:
+        if not args:
+            args = modifier,
+
+        return args[0].upper()
+
+    @transform('replace', 'repl', 'sub')
+    async def replace(self, _, modifier: str, *args: str) -> str:
+        if len(args) != 2:
+            raise ValueError('replace requires exactly two arguments')
+
+        from_, to = args
+        return modifier.replace(from_, to)
+
+    @transform('repeat', 'rep')
+    async def repeat(self, _, modifier: str, *args: str) -> str:
+        if not args:
+            args = modifier,
+
+        try:
+            modifier = int(modifier)
+        except ValueError:
+            raise ValueError('repeat requires an integer modifier')
+
+        if modifier < 1:
+            raise ValueError('repeat requires a positive integer')
+
+        if modifier > 1000:
+            raise ValueError('repeat modifier must be less than 1000')
+
+        return args[0] * modifier
+
+    @transform('strip', 'trim', 'truncate')
+    async def strip(self, _, modifier: str, *args: str) -> str:
+        if not args:
+            args = ' \n',
+
+        return modifier.strip(''.join(args))
+
+    @transform('round', 'rnd')
+    async def round(self, _, modifier: str, *args: str) -> int:
+        if not args:
+            args = modifier,
+
+        try:
+            num = float(args[0])
+        except ValueError:
+            raise ValueError('round requires a number argument')
+
+        return round(num)
+
+    @transform('ordinal', 'ord')
+    async def ordinal(self, _, modifier: str, *args: str) -> str:
+        if not args:
+            args = modifier,
+
+        try:
+            num = int(args[0])
+        except ValueError:
+            raise ValueError('ordinal requires a number argument')
+
+        return ordinal(num)
+
+    @transform('cutoff')
+    async def cutoff(self, _, modifier: str, *args: str) -> str:
+        if not modifier or not args:
+            raise ValueError('cutoff requires a modifier (max length) and an argument (string)')
+
+        if len(args) > 1:
+            raise ValueError('cutoff requires a single argument')
+
+        try:
+            modifier = int(modifier)
+        except ValueError:
+            raise ValueError('max length must be an integer')
+
+        if modifier < 1:
+            raise ValueError('max length must be greater than 0')
+
+        return cutoff(args[0], modifier)
+
+    @transform('comment', '//')
+    async def comment(self, *_) -> str:
+        return ''
+
+
+@preinstantiate()
+class RandomTransformer(Transformer[Any]):
+    @transform('random', 'rng', '#', 'rand')
+    def random(self, _, modifier: str, *args: str) -> int:
+        """Return a random number between args(0) and args(1)."""
+        if len(args) > 2:
+            raise ValueError('random takes at most 2 arguments')
+
+        if len(args) == 0:
+            args = modifier,
+
+        if len(args) == 1:
+            args = '1', args[0]
+
+        try:
+            low, high = map(int, map(str.strip, args))
+        except ValueError:
+            raise ValueError('random takes only integers as arguments')
+
+        if low > high:
+            low, high = high, low
+
+        if low == high:
+            return low
+
+        return random.randint(low, high)
+
+    @transform('choice', 'choose', '##', 'randchoice', 'random-choice', 'pick')
+    def choice(self, _, modifier: str, *args: str) -> str:
+        """Return a random choice of the given arguments."""
+        if not args:
+            if modifier:
+                raise ValueError('choice does not take a modifier')
+
+            raise ValueError('choice takes at least 1 argument')
+
+        return random.choice(args)
+
+    # TODO: {math: 1 + 1}
+
+
+class _SupportsUser(Protocol):
+    user: discord.Member
+    guild: discord.Guild
+
+
+@preinstantiate()
+class UserTransformer(Transformer[Environment[_SupportsUser]]):
+    @staticmethod
+    def _get_user(env: Environment[_SupportsUser], modifier: str) -> discord.Member:
+        if modifier:
+            try:
+                return env.ctx.guild.get_member(int(modifier))
+            except (ValueError, AttributeError):
+                raise ValueError('could not resolve modifier, try removing it instead.')
+
+        return env.ctx.author
+
+    @staticmethod
+    def get_asset_details(args: tuple[str, ...]) -> tuple[str | None, int | None]:
+        if not args:
+            return None, None
+
+        if len(args) == 1:
+            args = (None, int(args[0])) if args[0].isdigit() else (args[0], 0)
+        if len(args) != 2:
+            raise ValueError('asset details must be in the form of <format> <size>')
+
+        fmt, size = args
+
+        if not valid_icon_size(size):
+            raise ValueError('avatar size must be a power of 2 between 16 and 4096')
+
+        return fmt.lower(), size
+
+    @staticmethod
+    def get_asset_url(asset: discord.Asset, fmt: str, size: int) -> str:
+        if fmt:
+            asset = asset.with_format(fmt)  # type: ignore
+        if size:
+            asset = asset.with_size(size)
+
+        return asset.url
+
+    @transform('user', 'member')
+    def user(self, env: Environment[_SupportsUser], modifier: str, *_) -> discord.Member:
+        """Return the author of the current message."""
+        return self._get_user(env, modifier)
+
+    @user.transform('name', 'username')
+    def user_name(self, env: Environment[_SupportsUser], modifier: str, *_) -> str:
+        """Return the name of the author of the current message."""
+        return self._get_user(env, modifier).name
+
+    @user.transform('discriminator', 'discrim')
+    def user_discriminator(self, env: Environment[_SupportsUser], modifier: str, *_) -> str:
+        """Return the discriminator of the author of the current message."""
+        return self._get_user(env, modifier).discriminator
+
+    @user.transform('nick', 'nickname', 'display-name', 'display')
+    def user_nick(self, env: Environment[_SupportsUser], modifier: str, *_) -> str:
+        """Return the nickname of the author of the current message."""
+        return self._get_user(env, modifier).nick
+
+    @user.transform('mention', 'ping')
+    def user_mention(self, env: Environment[_SupportsUser], modifier: str, *_) -> str:
+        """Return a mention of the author of the current message."""
+        return self._get_user(env, modifier).mention
+
+    @user.transform('tag')
+    def user_tag(self, env: Environment[_SupportsUser], modifier: str, *_) -> discord.Member:
+        """Return the tag of the author of the current message."""
+        return self._get_user(env, modifier)
+
+    @user.transform('avatar', 'avatar-url', 'pfp', 'icon')
+    def user_avatar(self, env: Environment[_SupportsUser], modifier: str, *args: str) -> str:
+        """Return the avatar URL of the author of the current message."""
+        fmt, size = self.get_asset_details(args)
+        avatar = self._get_user(env, modifier).avatar
+
+        return self.get_asset_url(avatar, fmt, size)
+
+    @user.transform('display-avatar', 'display-avatar-url', 'display-pfp', 'display-icon')
+    def user_display_avatar(self, env: Environment[_SupportsUser], modifier: str, *args: str) -> str:
+        """Return the [guild] avatar URL of the author of the current message."""
+        fmt, size = self.get_asset_details(args)
+        avatar = self._get_user(env, modifier).display_avatar
+
+        return self.get_asset_url(avatar, fmt, size)
+
+    @user.transform('id')
+    def user_id(self, env: Environment[_SupportsUser], modifier: str, *_) -> int:
+        """Return the ID of the author of the current message."""
+        return self._get_user(env, modifier).id
+
+    @user.transform('created', 'created-at', 'creation-date')
+    def user_created(self, env: Environment[_SupportsUser], modifier: str, *_) -> datetime.datetime:
+        """Return the creation date of the author of the current message."""
+        return self._get_user(env, modifier).created_at
+
+    @user.transform('joined', 'joined-at', 'join-date')
+    def user_joined(self, env: Environment[_SupportsUser], modifier: str, *_) -> datetime.datetime:
+        """Return the join date of the author of the current message."""
+        return self._get_user(env, modifier).joined_at
+
+
+@preinstantiate()
+class LevelingTransformer(Transformer[Environment[LevelingMetadata]]):
+    @transform('level', 'lvl', 'lv')
+    def level(self, env: Environment[LevelingMetadata], *_) -> int:
+        """Return the current level of the author of the current message."""
+        return env.metadata.level
+
+
+@preinstantiate()
+class EmbedTransformer(Transformer[Environment[Any]]):
+    @transform('embed')
+    def embed(self, env: Environment[Any], modifier: str, *_) -> None:
+        """Return the embed of the current message."""
+        if not modifier:
+            raise ValueError('access a subtag or directly use JSON')
+
+        env.embed = discord.Embed.from_dict(json.loads(modifier))
+
+    @embed.transform('title')
+    def embed_title(self, env: Environment[Any], _, *args: str) -> None:
+        """Set the title of the embed of the current message."""
+        try:
+            env.get_embed().title = args[0]
+        except IndexError:
+            raise ValueError('no title specified')
+
+    @embed.transform('description')
+    def embed_description(self, env: Environment[Any], _, *args: str) -> None:
+        """Set the description of the embed of the current message."""
+        try:
+            env.get_embed().description = args[0]
+        except IndexError:
+            raise ValueError('no description specified')
+
+    @embed.transform('url')
+    def embed_url(self, env: Environment[Any], _, *args: str) -> None:
+        """Set the URL of the embed of the current message."""
+        try:
+            env.get_embed().url = args[0]
+        except IndexError:
+            raise ValueError('no URL specified')
+
+    @embed.transform('color', 'colour')
+    async def embed_color(self, env: Environment[Any], _, *args: str) -> None:
+        """Set the color of the embed of the current message."""
+        try:
+            env.get_embed().colour = await ColourConverter().convert(None, args[0])  # type: ignore
+        except IndexError:
+            raise ValueError('no color specified')
+
+    # TODO: author, footer, thumbnail, image, fields, timestamp

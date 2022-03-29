@@ -259,7 +259,7 @@ class Bot(commands.Bot):
 
             return await ctx.send('You are currently on cooldown.', reference=ctx.message, delete_after=15)
 
-        if isinstance(error, commands.MaxConcurrencyReached):
+        if isinstance(error, (commands.MaxConcurrencyReached, commands.CheckFailure)):
             return await ctx.send(error, reference=ctx.message, delete_after=15)
 
         if isinstance(error, (commands.MissingPermissions, commands.BotMissingPermissions)):

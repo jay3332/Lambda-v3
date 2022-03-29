@@ -9,18 +9,31 @@ from typing import Any, NamedTuple, overload, TypeVar, TYPE_CHECKING
 import discord
 from discord.abc import Snowflake as HasId
 from discord.ext.commands import BucketType, CooldownMapping
+from discord.http import handle_message_parameters
 
 from .rank_card import RankCard
-from app.util.types import (
-    LevelingData as LevelingDataPayload,
-    LevelingConfig as LevelingConfigPayload,
-    Snowflake,
-    StrSnowflake,
+from app.util.tags import (
+    EmbedTransformer,
+    Environment,
+    LevelingMetadata,
+    LevelingTransformer,
+    MetaTransformer,
+    RandomTransformer,
+    TransformerRegistry,
+    UserTransformer,
+    parse
 )
 
 if TYPE_CHECKING:
     from discord import Guild, Member
+
     from app.core import Bot
+    from app.util.types import (
+        LevelingData as LevelingDataPayload,
+        LevelingConfig as LevelingConfigPayload,
+        Snowflake,
+        StrSnowflake,
+    )
 
     T = TypeVar('T', bound=int)
 
@@ -28,7 +41,7 @@ __all__ = (
     'LevelingManager',
     'LevelingConfig',
     'LevelingSpec',
-    'LevelingStats',
+    'LevelingRecord',
 )
 
 
@@ -64,11 +77,11 @@ class CooldownManager:
         self.rate: int = rate
         self.per: float = per
 
-    def _is_ratelimited(self, message: discord.Message) -> bool:
+    def _is_ratelimited(self, message: discord.Message) -> float | None:
         assert message.guild is not None
         current = message.created_at.timestamp()
         bucket = self.mapping.get_bucket(message, current=current)
-        return bool(bucket.update_rate_limit(current))  # A cast to bool may not be necessary here
+        return bucket.update_rate_limit(current)
 
     def can_gain(self, message: discord.Message) -> bool:
         return not self._is_ratelimited(message)
@@ -104,11 +117,14 @@ class LevelingConfig:
         )
 
         self.level_up_message: str = data['level_up_message']
+        self.special_level_up_messages: dict[int, str] = {
+            int(k): v for k, v in json.loads(data['special_level_up_messages']).items()  # type: ignore
+        }
         self.level_up_channel: Snowflake | int = data['level_up_channel']
 
-        self.blacklisted_roles: list[int] = data['bl_roles']
-        self.blacklisted_channels: list[int] = data['bl_channels']
-        self.blacklisted_users: list[int] = data['bl_users']
+        self.blacklisted_roles: list[int] = data['blacklisted_roles']
+        self.blacklisted_channels: list[int] = data['blacklisted_channels']
+        self.blacklisted_users: list[int] = data['blacklisted_users']
 
         def _(d: str) -> dict[Snowflake, int]:
             return self._sanitize_snowflakes(json.loads(d))
@@ -131,12 +147,13 @@ class LevelingConfig:
 
         data = await self._bot.db.fetchrow(
             f'UPDATE level_config SET {chunk} WHERE guild_id = $1 RETURNING level_config.*;',
-            self.guild_id, *kwargs.values()
+            self.guild_id,
+            *kwargs.values(),
         )
         self._from_data(data)  # type: ignore
 
 
-class LevelingStats:
+class LevelingRecord:
     """Represents statistics member's level and/or rank card."""
 
     def __init__(
@@ -171,22 +188,98 @@ class LevelingStats:
     def max_xp(self) -> int:
         return self.level_config.spec.level_requirement_for(self.level + 1)
 
-    async def send_level_up_message(self, level: int, channel: discord.TextChannel) -> None:
+    def is_ratelimited(self, message: discord.Message) -> bool:
+        return self.level_config.cooldown_manager.can_gain(message)
+
+    def can_gain(self, message: discord.Message) -> bool:
+        config = self.level_config
+        return (
+            config.module_enabled
+            and self.user.id not in config.blacklisted_users
+            and message.channel.id not in config.blacklisted_channels
+            and not any(self.user._roles.has(role) for role in config.blacklisted_roles)
+            and not self.is_ratelimited(message)
+        )
+
+    def get_multiplier(self, message: discord.Message) -> float:
+        multiplier = 1.0
+
+        for role_id, multi in self.level_config.multiplier_roles.items():
+            if self.user._roles.has(role_id):
+                multiplier += multi
+
+        if message.channel.id in self.level_config.multiplier_channels:
+            multiplier += self.level_config.multiplier_channels[message.channel.id]
+
+        return multiplier
+
+    async def execute(self, message: discord.Message) -> None:
+        if not self.can_gain(message):
+            return
+
+        multiplier = self.get_multiplier(message)
+        gain = self.level_config.spec.get_xp_gain(multiplier)
+        await self.add_xp(gain, message=message)
+
+    # noinspection PyTypeChecker
+    async def send_level_up_message(self, level: int, message: discord.Message) -> None:
         if not self.level_config.level_up_channel or not self.level_config.level_up_message:
             return
 
         match self.level_config.level_up_channel:
             case 1:
-                channel_id = channel.id
+                channel_id = message.channel.id
             case 2:
                 dm_channel = await self.user.create_dm()
                 channel_id = dm_channel.id
             case custom:
                 channel_id = custom
 
+        content = self.level_config.special_level_up_messages.get(
+            level,
+            self.level_config.level_up_message,
+        )
+        env = Environment(metadata=LevelingMetadata(message=message, level=level))
+        output = await parse(
+            content,
+            env=env,
+            transformers=TransformerRegistry(
+                MetaTransformer,
+                RandomTransformer,
+                UserTransformer,
+                LevelingTransformer,
+                EmbedTransformer,
+            ),
+            silent=True,
+        )
 
+        if not output and not env.embed:
+            return
 
-    async def add_xp(self, xp: int, *, channel: discord.TextChannel) -> tuple[int, int]:
+        params = handle_message_parameters(content=output, embed=env.embed)
+        await self._bot.http.send_message(channel_id, params=params)
+
+    async def update_roles(self, level: int) -> None:
+        roles = self.level_config.level_roles
+        if not roles:
+            return
+
+        stack = self.level_config.role_stack
+
+        good_roles = {(int(k), v) for k, v in roles.items() if level >= v}
+        if not stack:
+            good_roles = {max(good_roles, key=lambda r: r[1])}
+
+        new = {r.id for r in self.user.roles} | good_roles
+        new.difference_update(role for role in roles if role not in good_roles)
+        reason = f'Advance to level {level:,}'
+
+        try:
+            await self.user.edit(roles=list(map(discord.Object, new)), reason=reason)
+        except discord.HTTPException:
+            pass
+
+    async def add_xp(self, xp: int, *, message: discord.Message) -> tuple[int, int]:
         await self.fetch_if_necessary()
 
         self.xp += xp
@@ -196,7 +289,8 @@ class LevelingStats:
                 self.xp -= self.max_xp
                 self.level += 1
 
-            # TODO: Send level-up message here
+            self._bot.loop.create_task(self.send_level_up_message(self.level, message))
+            self._bot.loop.create_task(self.update_roles(self.level))
 
         elif xp < 0:
             while self.xp < 0 and self.level >= 0:
@@ -206,7 +300,7 @@ class LevelingStats:
         await self.update(level=self.level, xp=self.xp)
         return self.level, self.xp
 
-    async def fetch(self) -> LevelingStats:
+    async def fetch(self) -> LevelingRecord:
         data = await self._bot.db.get_leveling_stats(self.user.id, self.guild.id)
         self._from_data(data, rank=data['rank'])
         return self
@@ -224,11 +318,12 @@ class LevelingStats:
             return
 
         kwargs = OrderedDict(kwargs)
-        chunk = ', '.join(f'{key} = ${i}' for i, key in enumerate(kwargs, start=2))
+        chunk = ', '.join(f'{key} = ${i}' for i, key in enumerate(kwargs, start=3))
 
         data = await self._bot.db.fetchrow(
             f'UPDATE levels SET {chunk} WHERE guild_id = $1 AND user_id = $2 RETURNING levels.*',
             self.guild.id,
+            self.user.id,
             *kwargs.values(),
         )
         self._from_data(data)  # type: ignore
@@ -241,18 +336,18 @@ class LevelingManager:
         self.bot: Bot = bot
         self.configs: dict[Snowflake, LevelingConfig] = {}
         self.rank_cards: dict[Snowflake, RankCard] = {}
-        self.stats: defaultdict[Snowflake, dict[Snowflake, LevelingStats]] = defaultdict(dict)
+        self.stats: defaultdict[Snowflake, dict[Snowflake, LevelingRecord]] = defaultdict(dict)
 
     async def _load_data(self) -> None:
         for entry in await self.bot.db.get_all_leveling_configurations():
             resolved = LevelingConfig(data=entry, bot=self.bot)
             self.configs[resolved.guild_id] = resolved
 
-    def user_stats_for(self, member: Member, /) -> LevelingStats:
+    def user_stats_for(self, member: Member, /) -> LevelingRecord:
         try:
             return self.stats[member.guild.id][member.id]
         except KeyError:
-            self.stats[member.guild.id][member.id] = res = LevelingStats(
+            self.stats[member.guild.id][member.id] = res = LevelingRecord(
                 user=member,
                 bot=self.bot,
                 config=self.configs[member.guild.id],

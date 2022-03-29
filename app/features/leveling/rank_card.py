@@ -132,7 +132,7 @@ class RankCard(BaseRankCard):
             if self.background_blur > 0:
                 im = im.filter(ImageFilter.GaussianBlur(radius=self.background_blur))
 
-            if self.background_image_alpha > 253:
+            if self.background_image_alpha < 253:
                 im.putalpha(self.background_image_alpha)
 
             alpha_paste(base, im, (0, 0), im)
@@ -214,7 +214,7 @@ class RankCard(BaseRankCard):
                     fallback_offset=(0, -5)
                 )
                 with font.session(pilmoji.draw) as font:
-                    pilmoji.text((406, 189 - y_shift), username, self.primary_color, font)  # type: ignore
+                    pilmoji.text((406, 189), username, self.primary_color, font)  # type: ignore
                     width, _ = pilmoji.getsize(username, font)  # type: ignore
 
                 # Discriminator

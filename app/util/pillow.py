@@ -162,9 +162,9 @@ class FontManager:
         except KeyError:
             pass
 
-        with open(path, 'rb') as fp:
-            self._fonts[key] = font = ImageFont.truetype(fp, size=size)
-            return font
+        fp = open(path, 'rb')  # do not close this file buffer on purpose.
+        self._fonts[key] = font = ImageFont.truetype(fp, size=size)
+        return font
 
     def clear(self) -> None:
         self._fonts.clear()

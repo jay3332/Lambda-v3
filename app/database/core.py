@@ -120,7 +120,7 @@ class Database(_Database):
                     """
 
             data = await connection.fetchrow(query, user_id, guild_id)
-            if data['user_id'] == user_id:
+            if data and data['user_id'] == user_id:
                 return data
 
             query = """
@@ -130,7 +130,7 @@ class Database(_Database):
                     """
 
             await connection.execute(query, user_id, guild_id)
-            return await self.get_leveling_stats(user_id, guild_id, connection=connection)
+            return await self.get_leveling_stats(user_id, guild_id)
 
     async def get_rank_card(self, user_id: int, *, connection: asyncpg.Connection | None = None) -> RankCard:
         async with connection or self.acquire() as connection:

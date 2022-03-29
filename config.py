@@ -119,3 +119,13 @@ class Emojis:
         forward: str = '\u25b6'
         first: str = '\u23ea'
         last: str = '\u23e9'
+
+    class Statuses:
+        online: str = '<:status_online:834163239126433842>'
+        idle: str = '<:status_idle:834163240740716624>'
+        dnd: str = '<:status_dnd:834163242041475092>'
+        offline: str = '<:status_offline:834163243278794762>'
+        streaming: str = '<:status_streaming:834167604389347369>'
+
+    enabled: str = Statuses.online
+    disabled: str = Statuses.dnd
