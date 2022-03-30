@@ -13,7 +13,7 @@ from discord.http import handle_message_parameters
 
 from .rank_card import RankCard
 from app.util.tags import (
-    EmbedTransformer,
+    ConditionalTransformer, EmbedTransformer,
     Environment,
     LevelingMetadata,
     LevelingTransformer,
@@ -249,6 +249,7 @@ class LevelingRecord:
                 UserTransformer,
                 LevelingTransformer,
                 EmbedTransformer,
+                ConditionalTransformer,
             ),
             silent=True,
         )
@@ -266,14 +267,20 @@ class LevelingRecord:
 
         stack = self.level_config.role_stack
 
-        good_roles = {(int(k), v) for k, v in roles.items() if level >= v}
+        good_roles = [(k, v) for k, v in roles.items() if level >= v]
         if not stack:
-            good_roles = {max(good_roles, key=lambda r: r[1])}
+            good_roles = max(good_roles, key=lambda r: r[1]),
 
-        new = {r.id for r in self.user.roles} | good_roles
+        good_roles = {k for k, v in good_roles}
+        old_roles = set(self.user._roles)
+
+        new = old_roles | good_roles
         new.difference_update(role for role in roles if role not in good_roles)
-        reason = f'Advance to level {level:,}'
 
+        if new == self.user.roles:
+            return
+
+        reason = f'Advance to level {level:,}'
         try:
             await self.user.edit(roles=list(map(discord.Object, new)), reason=reason)
         except discord.HTTPException:

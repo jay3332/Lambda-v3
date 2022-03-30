@@ -15,6 +15,7 @@ import jishaku
 from aiohttp import ClientSession
 from discord.ext import commands
 
+from app.core.cdn import PsuedoCDN
 from app.core.flags import FlagMeta
 from app.core.help import HelpCommand
 from app.core.helpers import GenericCommandError
@@ -49,6 +50,7 @@ class Bot(commands.Bot):
     if TYPE_CHECKING:
         from datetime import datetime
 
+        cdn: PsuedoCDN
         db: Database
         fonts: FontManager
         session: ClientSession
@@ -166,6 +168,7 @@ class Bot(commands.Bot):
         self.prepare_jishaku_flags()
         self.prepare_logger()
 
+        self.cdn = PsuedoCDN(self)
         self.db = Database(loop=self.loop)
         self.fonts = FontManager()
         self.session = ClientSession()

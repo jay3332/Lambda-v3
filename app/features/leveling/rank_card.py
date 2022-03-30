@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import functools
 from collections import OrderedDict
 from enum import Enum
 from io import BytesIO
-from typing import Any, ClassVar, Final, TYPE_CHECKING
+from typing import Any, ClassVar, Final, TYPE_CHECKING, Type, overload
 
 from PIL import Image, ImageFilter
+from aiohttp import ClientTimeout
 from pilmoji import Pilmoji
 from pilmoji.source import MicrosoftEmojiSource
 
@@ -57,6 +59,37 @@ class BaseRankCard:
     def _to_rgb(color: int) -> RGBColor:
         return (color >> 16) & 0xff, (color >> 8) & 0xff, color & 0xff
 
+    # noinspection PyNestedDecorators
+    @overload
+    @classmethod
+    def manual(
+        cls: Type[BaseRankCard],
+        *,
+        user: Member | User,
+        bot: Bot,
+        font: Font,
+        primary_color: RGBColor,
+        secondary_color: RGBColor,
+        tertiary_color: RGBColor,
+        background_url: str | None,
+        background_color: RGBColor,
+        background_image_alpha: int,
+        background_blur: int,
+        overlay_color: RGBColor,
+        overlay_alpha: float,
+        overlay_border_radius: int,
+        avatar_border_color: RGBColor,
+        avatar_border_alpha: float,
+        avatar_border_radius: int,
+        progress_bar_color: RGBColor,
+        progress_bar_alpha: float,
+    ) -> BaseRankCard:
+        ...
+
+    @classmethod
+    def manual(cls: Type[BaseRankCard], *, user: Member | User, bot: Bot, **kwargs: Any) -> BaseRankCard:
+        return cls(data={**kwargs, 'user_id': user.id}, user=user, bot=bot)  # type: ignore
+
     def _from_data(self, data: RankCardPayload) -> None:
         self.user_id: int = data['user_id']
         self.font: Font = Font(data['font'])
@@ -97,18 +130,28 @@ class BaseRankCard:
 
 
 class RankCard(BaseRankCard):
-    """Represents a rank card with rendering methods."""
+    """Represents a rank card with rendering methods."""\
+
     CARD_ASPECT_RATIO: ClassVar[float] = 0.427536
 
     async def _fetch_background_bytes(self) -> BytesIO | None:
         if not self.background_url:
             return
 
-        async with self._bot.session.get(self.background_url) as response:
+        async with self._bot.session.get(
+            self.background_url,
+            timeout=ClientTimeout(total=5),
+        ) as response:
             if response.status >= 400:
                 return
 
             return BytesIO(await response.read())
+
+    async def fetch_background_bytes(self) -> BytesIO | None:
+        try:
+            return await self._fetch_background_bytes()
+        except asyncio.TimeoutError:
+            return None
 
     @executor_function
     def prepare_background(self, stream: BytesIO | None = None) -> Image.Image:
@@ -135,7 +178,7 @@ class RankCard(BaseRankCard):
             if self.background_image_alpha < 253:
                 im.putalpha(self.background_image_alpha)
 
-            alpha_paste(base, im, (0, 0), im)
+            base = alpha_paste(base, im, (0, 0), im)
 
         return base
 
@@ -253,7 +296,7 @@ class RankCard(BaseRankCard):
                 return buffer
 
     async def render(self, *, rank: int, level: int, xp: int, max_xp: int) -> BytesIO:
-        background_bytes = await self._fetch_background_bytes()
+        background_bytes = await self.fetch_background_bytes()
         background = await self.prepare_background(background_bytes)  # type: ignore
 
         avatar = self.user.avatar or self.user.default_avatar

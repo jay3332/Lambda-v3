@@ -77,6 +77,16 @@ client_secret: str = env('DISCORD_CLIENT_SECRET')
 
 resolved_token: str = beta_token if beta else token
 
+# a collection of discord channel ids of where to post cdn requests
+# TODO: a real CDN
+cdn_buckets: Collection[int] = (
+    850421573793480715,
+    850421687660576768,
+    850421712393601044,
+    850421730118860860,
+    850421743042822164,
+)
+
 
 class DatabaseConfig:
     """Database configuration variables."""
@@ -129,3 +139,22 @@ class Emojis:
 
     enabled: str = Statuses.online
     disabled: str = Statuses.dnd
+
+    class ProgressBar:
+        left_empty: str = '<:pb_left_0:937082616333602836>'
+        left_low: str = '<:pb_left_1:937082634046173194>'
+        left_mid: str = '<:pb_left_2:937082669068595300>'
+        left_high: str = '<:pb_left_3:937082728376045598>'
+        left_full: str = '<:pb_left_4:937082777927561297>'
+
+        mid_empty: str = '<:pb_mid_0:937082833107828786>'
+        mid_low: str = '<:pb_mid_1:937082868226752552>'
+        mid_mid: str = '<:pb_mid_2:937082902880083988>'
+        mid_high: str = '<:pb_mid_3:937082944655351860>'
+        mid_full: str = '<:pb_mid_4:937082993057595473>'
+
+        right_empty: str = '<:pb_right_0:937083054340595803>'
+        right_low: str = '<:pb_right_1:937083097969754193>'
+        right_mid: str = '<:pb_right_2:937083245173026887>'
+        right_high: str = '<:pb_right_3:937083276827439164>'
+        right_full: str = '<:pb_right_4:937083328648056862>'

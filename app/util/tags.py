@@ -10,10 +10,13 @@ from typing import (
     Callable,
     ClassVar,
     Concatenate,
+    Final,
     Generic,
     Iterator,
-    NamedTuple, ParamSpec,
-    Protocol, Type,
+    NamedTuple,
+    ParamSpec,
+    Protocol,
+    Type,
     TypeVar,
     TYPE_CHECKING,
 )
@@ -43,6 +46,7 @@ __all__ = (
     'UserTransformer',
     'LevelingTransformer',
     'EmbedTransformer',
+    'ConditionalTransformer',
 )
 
 P = ParamSpec('P')
@@ -51,7 +55,7 @@ EnvironmentT = TypeVar('EnvironmentT', bound='Environment')
 TransformerT = TypeVar('TransformerT', bound='Transformer')
 
 
-def transform(*names: str) -> Callable[
+def transform(*names: str, split_args: bool = True, evaluate_modifier: bool = True) -> Callable[
     [Callable[Concatenate[Transformer, Environment, P], T]],
     TransformerCallback[EnvironmentT, P, T],
 ]:
@@ -63,7 +67,7 @@ def transform(*names: str) -> Callable[
         if not names:
             names = [func.__name__]
 
-        return TransformerCallback(func, *names)  # type: ignore
+        return TransformerCallback(func, *names, split_args=split_args, evaluate_modifier=evaluate_modifier)  # type: ignore
 
     return decorator
 
@@ -128,10 +132,14 @@ class TransformerCallback(Generic[EnvironmentT, P, T]):
         func: Callable[Concatenate[Transformer, EnvironmentT, P], T],
         *names: str,
         parent: TransformerCallback | None = None,
+        split_args: bool = True,
+        evaluate_modifier: bool = True,
     ) -> None:
         self.callback: Callable[Concatenate[Transformer, EnvironmentT, P], T] = func
         self.transformer: Transformer | None = None
         self.names: tuple[str, ...] = names
+        self.split_args: bool = split_args
+        self.evaluate_modifier: bool = evaluate_modifier
 
         self.parent: TransformerCallback | None = parent
         self.children: list[TransformerCallback] = []
@@ -163,7 +171,7 @@ class TransformerCallback(Generic[EnvironmentT, P, T]):
 
         return '.'.join(parent.name for parent in parents)
 
-    def transform(self, *names: str) -> Callable[
+    def transform(self, *names: str, split_args: bool = True, evaluate_modifier: bool = True) -> Callable[
         [Callable[Concatenate[Transformer, Environment, P], T]],
         TransformerCallback[EnvironmentT, P, T],
     ]:
@@ -174,15 +182,18 @@ class TransformerCallback(Generic[EnvironmentT, P, T]):
             if not names:
                 names = [func.__name__]
 
-            self.children.append(result := TransformerCallback(func, *names, parent=self))
+            self.children.append(
+                result := TransformerCallback(
+                    func,
+                    *names,
+                    parent=self,
+                    split_args=split_args,
+                    evaluate_modifier=evaluate_modifier,
+                ),
+            )
             return result  # type: ignore
 
         return decorator
-
-    def walk_children(self) -> Iterator[TransformerCallback]:
-        for child in self.children:
-            yield child
-            yield from child.walk_children()
 
     def __call__(self, env: EnvironmentT, *args: P.args, **kwargs: P.kwargs) -> T:
         if self.transformer is None:
@@ -213,20 +224,32 @@ class Transformer(Generic[EnvironmentT]):
 
         return self
 
-    def walk_transformers(self) -> Iterator[TransformerCallback[EnvironmentT, Any, Any]]:
-        for transformer in self.transformers:
-            yield transformer
-            yield from transformer.walk_children()
-
-    def get_transformer_callback(self, name: str) -> TransformerCallback[EnvironmentT, Any, Any] | None:
-        """Returns the transformer callback for the given name."""
+    def _get_transformer_callback(
+        self,
+        name: str,
+        *,
+        parent: TransformerCallback | None = None,
+    ) -> TransformerCallback[EnvironmentT, Any, Any] | None:
         name = name.casefold()
+        children = parent.children if parent else self.transformers
 
-        for transformer in self.walk_transformers():
+        for transformer in children:
             if name in transformer.names:
                 return transformer
 
         return None
+
+    def get_transformer_callback(self, name: str) -> TransformerCallback[EnvironmentT, Any, Any] | None:
+        """Returns the transformer callback for the given name."""
+        name = name.split('.')
+        parent = None
+
+        for tag in name:
+            parent = self._get_transformer_callback(tag, parent=parent)
+            if parent is None:
+                return None
+
+        return parent
 
 
 class TransformerRegistry(Generic[TransformerT]):
@@ -304,6 +327,57 @@ class Parser:
             elif char == ':':
                 can_increase_modifier = False
 
+    @staticmethod
+    def split_tag(text: str) -> tuple[str, str, str]:
+        """Split a tag into its name, modifier, and arguments."""
+        modifier_count = 0
+        modifier_cumulative_count = 0
+
+        tag = None
+        tag_end = None
+        modifier = None
+        args = None
+
+        for i, char in enumerate(text):
+            if char == '(':
+                modifier_count += 1
+                modifier_cumulative_count += 1
+
+                if modifier_cumulative_count == 1:  # First "(" encountered
+                    tag_end = i
+                    tag = text[:tag_end]
+
+            elif char == ')' and modifier_count > 0:
+                modifier_count -= 1
+
+            if modifier_count > 0:
+                continue
+
+            end = len(text) - 1 == i
+            if end or char == ':':
+                modifier = (
+                    ''
+                    if tag_end is None
+                    else text[tag_end + 1:i if end and char != ':' else i - 1]
+                )
+                try:
+                    args = text[i + 1:]
+                except IndexError:
+                    args = ''
+
+                break
+
+        if tag is None:
+            tag = text.split(':')[0]
+
+        if modifier is None:
+            modifier = ''
+
+        if args is None:
+            args = ''
+
+        return tag, modifier, args
+
     @classmethod
     async def parse(cls, text: str, *, env: EnvironmentT, transformers: TransformerRegistry, silent: bool = False) -> str:
         """Parses the given text and returns the transformed text."""
@@ -312,18 +386,22 @@ class Parser:
         for i, node in enumerate(nodes, start=1):
             start, end = node
             entry = text[start:end].removeprefix('{').removesuffix('}')
-            tag, _, args = entry.partition(':')
+            tag, modifier, args = cls.split_tag(entry)
 
-            args = [
-                arg.replace('\\;', ';')
-                for arg in cls.ARGUMENT_REGEX.split(args)
-            ] if args else []
-
-            tag, _, modifier = tag.partition('(')
-            modifier = modifier.removesuffix(')')
             callback = transformers.get_transformer_callback(tag.strip())
             if callback is None:
                 continue
+
+            if callback.split_args:
+                args = [
+                    arg.replace('\\;', ';')
+                    for arg in cls.ARGUMENT_REGEX.split(args)
+                ] if args else []
+            else:
+                args = [args]
+
+            if callback.evaluate_modifier:
+                modifier = await cls.parse(modifier, env=env, transformers=transformers, silent=silent)
 
             try:
                 repl = await maybe_coroutine(callback, env, modifier, *args)
@@ -353,15 +431,118 @@ class Parser:
 parse = Parser.parse
 
 
+def _transform_bool(string: str) -> bool | None:
+    """Transform a string into a boolean."""
+    string = string.lower()
+    if string in ('true', 'yes', '1'):
+        return True
+
+    if string in ('false', 'no', '0'):
+        return False
+
+    return None
+
+
+_OPERATOR_LOOKUP: Final[dict[str, tuple[Type[T], Callable[[T, T], bool]]]] = {
+    '#==': (float, float.__eq__),
+    '#!=': (float, float.__ne__),
+    '#<>': (float, float.__ne__),
+    '==': (str, str.__eq__),
+    '!=': (str, str.__ne__),
+    '<>': (str, str.__ne__),
+    '>=': (float, float.__ge__),
+    '<=': (float, float.__le__),
+    '>': (float, float.__gt__),
+    '<': (float, float.__lt__),
+}
+
+
+def transform_conditional(condition: str) -> bool | None:
+    """Transform a conditional like '5 > 3' into a boolean."""
+    condition = condition.strip()
+    transformed = _transform_bool(condition)
+    if transformed is not None:
+        return transformed
+
+    for candidate, (converter, op) in _OPERATOR_LOOKUP.items():
+        if candidate not in condition:
+            continue
+
+        left, _, right = condition.partition(candidate)
+        try:
+            left = converter(left.strip('( \t\n\r)'))
+            right = converter(right.strip('( \t\n\r)'))
+        except ValueError:
+            return False
+
+        return op(left, right)
+
+    return None
+
+
+@preinstantiate()
+class ConditionalTransformer(Transformer[Any]):
+    @transform('if', '?')
+    async def transform_if(self, _, condition: str, *args) -> str:
+        """Transform an if statement.
+
+        Usage: {if(condition):content;else}
+        """
+        if not args:
+            raise ValueError('expected at least one argument')
+
+        if len(args) > 2:
+            raise ValueError('expected at most two arguments')
+
+        condition = transform_conditional(condition)
+
+        if condition:
+            return args[0]
+        elif condition is False:
+            return args[1] if len(args) > 1 else ''
+
+        raise ValueError('invalid conditional')
+
+    @transform('unless', '!', 'not')
+    async def transform_unless(self, _, condition: str, *args: str) -> str:
+        """Transform an unless statement."""
+        if not args:
+            raise ValueError('expected at least one argument')
+
+        if len(args) > 2:
+            raise ValueError('expected at most two arguments')
+
+        condition = transform_conditional(condition)
+
+        if condition is False:
+            return args[0]
+        elif condition:
+            return args[1] if len(args) > 1 else ''
+
+        raise ValueError('invalid conditional')
+
+    @transform('exists', '??', split_args=False)
+    async def transform_exists(self, _, modifier: str, arg: str) -> bool:
+        """Return whether it exists"""
+        return bool(modifier or arg)
+
+    @transform('or', 'any', 'some')
+    async def transform_or(self, _, _mod, *args: str) -> bool:
+        """Return whether any of the arguments are true."""
+        return any(map(transform_conditional, args))
+
+    @transform('and', 'all')
+    async def transform_and(self, _, _mod, *args: str) -> bool:
+        """Return whether all arguments are true."""
+        return all(map(transform_conditional, args))
+
+
 @preinstantiate()
 class MetaTransformer(Transformer[Any]):
-    @transform('char-at', 'charAt', 'getchar', 'char')
-    async def char_at(self, _, modifier: str, *args: str) -> str:
-        if not modifier or not args:
+    @transform('char-at', 'charAt', 'getchar', 'char', split_args=False)
+    async def char_at(self, _, modifier: str, arg: str) -> str:
+        if not modifier or not arg:
             raise ValueError('char-at requires a modifier (index) and an argument (string)')
-
-        if len(args) > 1:
-            raise ValueError('char-at requires a single argument')
 
         try:
             modifier = int(modifier)
@@ -369,40 +550,25 @@ class MetaTransformer(Transformer[Any]):
             raise ValueError('index must be an integer')
 
         try:
-            return args[0][modifier - 1 if modifier > 0 else modifier]
+            return arg[modifier - 1 if modifier > 0 else modifier]
         except IndexError:
             raise IndexError('character out of range')
 
-    @transform('escape')
-    async def escape(self, _, modifier: str, *args: str) -> str:
-        if modifier:
-            return modifier
+    @transform('escape', split_args=False, evaluate_modifier=False)
+    async def escape(self, _, modifier: str, arg: str) -> str:
+        return (arg or modifier).replace(';', '\\;')
 
-        if not args:
-            return ''
+    @transform('length', 'len', 'size', split_args=False)
+    async def length(self, _, modifier: str, arg: str) -> int:
+        return len(arg or modifier)
 
-        return '\\;'.join(args)
-
-    @transform('length', 'len', 'size')
-    async def length(self, _, modifier: str, *args: str) -> int:
-        if not args:
-            args = modifier,
-
-        return len(args[0])
-
-    @transform('lowercase', 'lower')
-    async def lowercase(self, _, modifier: str, *args: str) -> str:
-        if not args:
-            args = modifier,
-
-        return args[0].lower()
+    @transform('lowercase', 'lower', split_args=False)
+    async def lowercase(self, _, modifier: str, arg: str) -> str:
+        return (arg or modifier).lower()
 
     @transform('uppercase', 'upper')
-    async def uppercase(self, _, modifier: str, *args: str) -> str:
-        if not args:
-            args = modifier,
-
-        return args[0].upper()
+    async def uppercase(self, _, modifier: str, arg: str) -> str:
+        return (arg or modifier).upper()
 
     @transform('replace', 'repl', 'sub')
     async def replace(self, _, modifier: str, *args: str) -> str:
@@ -412,10 +578,10 @@ class MetaTransformer(Transformer[Any]):
         from_, to = args
         return modifier.replace(from_, to)
 
-    @transform('repeat', 'rep')
-    async def repeat(self, _, modifier: str, *args: str) -> str:
-        if not args:
-            args = modifier,
+    @transform('repeat', 'rep', split_args=False)
+    async def repeat(self, _, modifier: str, arg: str) -> str:
+        if not arg:
+            raise ValueError('repeat requires an argument')
 
         try:
             modifier = int(modifier)
@@ -428,45 +594,40 @@ class MetaTransformer(Transformer[Any]):
         if modifier > 1000:
             raise ValueError('repeat modifier must be less than 1000')
 
-        return args[0] * modifier
+        return arg * modifier
 
-    @transform('strip', 'trim', 'truncate')
-    async def strip(self, _, modifier: str, *args: str) -> str:
-        if not args:
-            args = ' \n',
+    @transform('strip', 'trim', 'truncate', split_args=False)
+    async def strip(self, _, modifier: str, arg: str) -> str:
+        """Usage: {strip(<>):<my-string>} -> my-string"""
+        if not modifier:
+            modifier = ' \n'
 
-        return modifier.strip(''.join(args))
+        return arg.strip(modifier)
 
-    @transform('round', 'rnd')
-    async def round(self, _, modifier: str, *args: str) -> int:
-        if not args:
-            args = modifier,
-
+    @transform('round', 'rnd', split_args=False)
+    async def round(self, _, modifier: str, arg: str) -> int:
         try:
-            num = float(args[0])
+            num = float(arg or modifier)
         except ValueError:
             raise ValueError('round requires a number argument')
 
         return round(num)
 
-    @transform('ordinal', 'ord')
-    async def ordinal(self, _, modifier: str, *args: str) -> str:
-        if not args:
-            args = modifier,
-
+    @transform('ordinal', 'ord', split_args=False)
+    async def ordinal(self, _, modifier: str, arg: str) -> str:
         try:
-            num = int(args[0])
+            num = int(arg or modifier)
         except ValueError:
             raise ValueError('ordinal requires a number argument')
 
         return ordinal(num)
 
     @transform('cutoff')
-    async def cutoff(self, _, modifier: str, *args: str) -> str:
-        if not modifier or not args:
+    async def cutoff(self, _, modifier: str, arg: str) -> str:
+        if not modifier or not arg:
             raise ValueError('cutoff requires a modifier (max length) and an argument (string)')
 
-        if len(args) > 1:
+        if not arg:
             raise ValueError('cutoff requires a single argument')
 
         try:
@@ -477,9 +638,9 @@ class MetaTransformer(Transformer[Any]):
         if modifier < 1:
             raise ValueError('max length must be greater than 0')
 
-        return cutoff(args[0], modifier)
+        return cutoff(arg, modifier)
 
-    @transform('comment', '//')
+    @transform('comment', '//', split_args=False, evaluate_modifier=False)
     async def comment(self, *_) -> str:
         return ''
 
@@ -536,11 +697,11 @@ class UserTransformer(Transformer[Environment[_SupportsUser]]):
     def _get_user(env: Environment[_SupportsUser], modifier: str) -> discord.Member:
         if modifier:
             try:
-                return env.ctx.guild.get_member(int(modifier))
+                return env.metadata.guild.get_member(int(modifier))
             except (ValueError, AttributeError):
                 raise ValueError('could not resolve modifier, try removing it instead.')
 
-        return env.ctx.author
+        return env.metadata.user
 
     @staticmethod
     def get_asset_details(args: tuple[str, ...]) -> tuple[str | None, int | None]:
@@ -640,7 +801,7 @@ class LevelingTransformer(Transformer[Environment[LevelingMetadata]]):
 
 @preinstantiate()
 class EmbedTransformer(Transformer[Environment[Any]]):
-    @transform('embed')
+    @transform('embed', evaluate_modifier=False)
     def embed(self, env: Environment[Any], modifier: str, *_) -> None:
         """Return the embed of the current message."""
         if not modifier:
