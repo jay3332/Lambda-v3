@@ -6,7 +6,6 @@ from collections import defaultdict
 from functools import wraps
 from typing import Callable, ParamSpec, TYPE_CHECKING, TypeVar
 
-import discord
 from discord.http import Route
 from quart import Quart, Request, Response, jsonify, make_response, request
 
@@ -297,7 +296,7 @@ async def remove_prefix(guild_id: int) -> JsonObject | tuple[JsonObject, int]:
 @app.route('/rank-card/<int:user_id>', methods=['GET', 'OPTIONS'])
 @handle_cors
 async def rank_card(user_id: int) -> JsonObject | tuple[JsonObject, int]:
-    manager: LevelingManager = await app.bot.get_cog('Leveling').manager
+    manager: LevelingManager = app.bot.get_cog('Leveling').manager  # type: ignore
     user = app.bot.get_user(user_id)
     if not user:
         return {
