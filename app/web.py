@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import os
 import re
 import urllib.parse
 from collections import defaultdict
 from functools import wraps
-from typing import Callable, ParamSpec, TYPE_CHECKING, TypeVar
+from typing import Callable, Final, ParamSpec, TYPE_CHECKING, TypeVar
 
 from discord.http import Route
 from quart import Quart, Request, Response, jsonify, make_response, request
@@ -14,11 +15,13 @@ from config import client_secret
 if TYPE_CHECKING:
     from app.core import Bot
     from app.features.leveling.core import LevelingManager
+    from app.features.leveling.rank_card import RankCard
     from app.util.types import JsonObject
 
     class _Quart(Quart):
         bot: Bot
         authorized_guilds: defaultdict[str, set[int]]
+        token_store: dict[int, str]
 
     Quart = _Quart
 
@@ -29,6 +32,7 @@ __all__ = ('app',)
 
 app = Quart(__name__)
 app.authorized_guilds = defaultdict(set)
+app.token_store = {}
 
 MENTION_REGEX: re.Pattern[str] = re.compile(r'<@!?\d+>')
 
@@ -202,7 +206,64 @@ async def _handle_authorization(guild_id: int) -> tuple[JsonObject, int] | None:
 
     if guild_id not in app.authorized_guilds[token]:
         return {
-            'error': 'Unauthorized'
+            'error': 'Unauthorized',
+        }, 401
+
+
+@app.route('/auth/<int:user_id>', methods=['POST', 'OPTIONS'])
+@handle_cors
+async def authorize_user(user_id: int) -> JsonObject | tuple[JsonObject, int]:
+    try:
+        token = request.args['token']
+    except KeyError:
+        return {
+            'error': 'Missing access token'
+        }, 400
+
+    token_type = request.args.get('tt', 'Bearer')
+
+    async with app.bot.session.request('GET', Route.BASE + '/users/@me', headers={
+        'Authorization': f'{token_type} {token}'
+    }) as resp:
+        if resp.status != 200:
+            text = await resp.text('utf-8')
+            return {
+                'error': f'HTTP {resp.status}: {resp.reason} ({text})'
+            }, 400
+
+        user = await resp.json()
+        if user['id'] != str(user_id):
+            return {
+                'error': 'ID does not match token',
+                'force_reauth': True,
+            }, 400
+
+    token = os.urandom(16).hex()
+    app.token_store[user_id] = token
+    return {
+        'token': token,
+    }
+
+
+async def _authenticate_user(user_id: int) -> tuple[JsonObject, int] | None:
+    try:
+        token = request.headers['Authorization']
+    except KeyError:
+        return {
+            'error': 'Missing authorization header'
+        }, 400
+
+    try:
+        if token != app.token_store[user_id]:
+            return {
+                'error': 'Invalid token',
+                'force_reauth': True,
+            }, 401
+
+    except KeyError:
+        return {
+            'error': f'You are currently unauthorized, please make a POST request to /auth/{user_id}',
+            'force_reauth': True,
         }, 401
 
 
@@ -293,18 +354,27 @@ async def remove_prefix(guild_id: int) -> JsonObject | tuple[JsonObject, int]:
     }
 
 
-@app.route('/rank-card/<int:user_id>', methods=['GET', 'OPTIONS'])
-@handle_cors
-async def rank_card(user_id: int) -> JsonObject | tuple[JsonObject, int]:
-    manager: LevelingManager = app.bot.get_cog('Leveling').manager  # type: ignore
-    user = app.bot.get_user(user_id)
-    if not user:
-        return {
-            'error': 'User not found'
-        }, 404
+DB_KEY_MAPPING: Final[dict[str, str]] = {
+    'font': 'font',
+    'primaryColor': 'primary_color',
+    'secondaryColor': 'secondary_color',
+    'tertiaryColor': 'tertiary_color',
+    'backgroundUrl': 'background_url',
+    'backgroundColor': 'background_color',
+    'backgroundImageAlpha': 'background_alpha',
+    'backgroundBlur': 'background_blur',
+    'overlayColor': 'overlay_color',
+    'overlayAlpha': 'overlay_alpha',
+    'overlayBorderRadius': 'overlay_border_radius',
+    'avatarBorderColor': 'avatar_border_color',
+    'avatarBorderAlpha': 'avatar_border_alpha',
+    'avatarBorderRadius': 'avatar_border_radius',
+    'progressBarColor': 'progress_bar_color',
+    'progressBarAlpha': 'progress_bar_alpha',
+}
 
-    record = await manager.fetch_rank_card(user)
-    # respond with camelCase because front-end takes it
+
+def _rank_card_to_json(record: RankCard) -> JsonObject:
     return {
         'font': record.font.value,
         'primaryColor': record.data['primary_color'],
@@ -322,6 +392,36 @@ async def rank_card(user_id: int) -> JsonObject | tuple[JsonObject, int]:
         'avatarBorderRadius': record.avatar_border_radius,
         'progressBarColor': record.data['progress_bar_color'],
         'progressBarAlpha': record.data['progress_bar_alpha'],
+    }
+
+
+@app.route('/rank-card/<int:user_id>', methods=['GET', 'PATCH', 'OPTIONS'])
+@handle_cors
+async def rank_card(user_id: int) -> JsonObject | tuple[JsonObject, int]:
+    if err := await _authenticate_user(user_id):
+        return err
+
+    manager: LevelingManager = app.bot.get_cog('Leveling').manager  # type: ignore
+    user = app.bot.get_user(user_id)
+    if not user:
+        return {
+            'error': 'User not found'
+        }, 404
+
+    record = await manager.fetch_rank_card(user)
+    if request.method == 'GET':
+        # respond with camelCase because front-end takes it
+        return _rank_card_to_json(record)
+
+    json = await request.get_json()
+    kwargs = {
+        DB_KEY_MAPPING[k]: v for k, v in json.items()
+    }
+
+    await record.update(**kwargs)
+    return {
+        'success': True,
+        'updated': _rank_card_to_json(record),
     }
 
 
