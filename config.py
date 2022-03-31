@@ -74,18 +74,9 @@ allowed_mentions: AllowedMentions = AllowedMentions(everyone=False, users=True, 
 token: str = env('DISCORD_TOKEN')
 beta_token: str = env('DISCORD_BETA_TOKEN')
 client_secret: str = env('DISCORD_CLIENT_SECRET')
+cdn_authorization: str = env('CDN_AUTHORIZATION')
 
 resolved_token: str = beta_token if beta else token
-
-# a collection of discord channel ids of where to post cdn requests
-# TODO: a real CDN
-cdn_buckets: Collection[int] = (
-    850421573793480715,
-    850421687660576768,
-    850421712393601044,
-    850421730118860860,
-    850421743042822164,
-)
 
 
 class DatabaseConfig:

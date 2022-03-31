@@ -11,7 +11,7 @@ from discord.ext import commands
 from app.core import Cog, Context, Flags, REPLY, command, cooldown, flag, group, store_true
 from app.core.helpers import user_max_concurrency
 from app.features.leveling.core import LevelingManager
-from app.features.leveling.rank_card import Font as RankCardFont, RankCard
+from app.features.leveling.rank_card import Font as RankCardFont
 from app.util import converter
 from app.util.common import progress_bar
 from app.util.image import ImageFinder
@@ -79,11 +79,11 @@ async def ImageUrlConverter(ctx: Context, argument: str) -> str:
         allowed_content_types={'image/png', 'image/jpg', 'image/jpeg'},
     )
 
-    return await ctx.bot.cdn.upload(
+    response = await ctx.bot.cdn.upload(
         BytesIO(result),
-        filename=f'rank_card_background_{ctx.author.id}.png',
-        owner=ctx.author,
+        filename=f'rank_card_background_{ctx.author.id}_{ctx.message.id}_.png',
     )
+    return response.url
 
 
 def between(lower: int, upper: int, arg: str) -> Callable[[Any, str], Coroutine[Any, Any, int]]:
@@ -182,7 +182,7 @@ class Leveling(Cog):
         await record.fetch_if_necessary()
         await record.execute(message)
 
-    @group(aliases=('lc', 'level-configuration', 'level-configs', 'leveling-config'))
+    @group('level-config', aliases=('lc', 'level-configuration', 'level-configs', 'leveling-config'))
     async def level_config(self, _ctx: Context) -> CommandResponse:
         """Commands for configuring the leveling module."""
         return 'WIP', REPLY

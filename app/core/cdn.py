@@ -1,44 +1,85 @@
 from __future__ import annotations
 
-import random
+from typing import BinaryIO, Final, NamedTuple, TYPE_CHECKING
 
-from discord import File, Member, User, Webhook
-from typing import BinaryIO, TYPE_CHECKING
+from aiohttp import ClientSession, FormData
+from discord.utils import cached_property
 
-from config import cdn_buckets
+from config import cdn_authorization
 
 if TYPE_CHECKING:
+    from discord import File
     from app.core import Bot
 
+__all__ = (
+    'CDNClient',
+    'CDNEntry',
+)
 
-class PsuedoCDN:
-    """A CDN-like interface that stores messages on Discord rather than host my own CDN.
+BASE_URL: Final[str] = 'https://cdn.lambdabot.cf'
+HEADERS: Final[dict[str, str]] = {
+    'Authorization': f'Bearer {cdn_authorization}',
+    'User-Agent': 'LambdaBot/1.0',
+}
 
-    This is a temporary solution until I go out of my way and actually make a CDN.
-    """
+
+class CDNEntry(NamedTuple):
+    filename: str
+    session: ClientSession | None = None
+
+    @cached_property
+    def url(self) -> str:
+        return BASE_URL + f'/uploads/{self.filename}'
+
+    def __str__(self) -> str:
+        return self.url
+
+    def __repr__(self) -> str:
+        return f'<CDNEntry filename={self.filename!r} url={self.url!r}>'
+
+    async def read(self) -> bytes:
+        if self.session is None:
+            raise RuntimeError('no session attached to this entry')
+
+        async with self.session.get(self.url) as resp:
+            resp.raise_for_status()
+            return await resp.read()
+
+    async def delete(self) -> None:
+        if self.session is None:
+            raise RuntimeError('no session attached to this entry')
+
+        async with self.session.delete(self.url, headers=HEADERS) as resp:
+            resp.raise_for_status()
+
+
+class CDNClient:
+    """An interface for requests to Lambda's CDN, cdn.lambdabot.cf."""
 
     def __init__(self, bot: Bot) -> None:
-        self.bot: Bot = bot
-        self.webhooks: list[Webhook] = []
+        self._session: ClientSession = bot.session
 
-    async def _cache_webhooks(self) -> None:
-        for bucket in cdn_buckets:
-            data = await self.bot.http.channel_webhooks(bucket)
-            self.webhooks.extend(Webhook.from_state(d, state=self.bot._connection) for d in data)
-
-    async def upload(self, fp: BinaryIO, filename: str = None, *, owner: Member | User | None = None) -> str:
-        if not self.webhooks:
-            await self._cache_webhooks()
-
+    async def upload(self, fp: BinaryIO, filename: str = None) -> CDNEntry:
+        """Upload a file to the CDN."""
         filename = filename or 'unknown.png'
-        webhook = random.choice(self.webhooks)
 
-        message = await webhook.send(
-            f'Logged owner: {owner} ({owner.id})' if owner else '',
-            file=File(fp, filename),  # type: ignore
-            wait=True,
-        )
-        return message.attachments[0].url
+        form = FormData()
+        form.add_field('file', fp, filename=filename)
 
-    async def upload_file(self, file: File, *, owner: Member | User | None = None) -> str:
-        return await self.upload(file.fp, file.filename, owner=owner)
+        async with self._session.post('https://cdn.lambdabot.cf/upload', data=form, headers=HEADERS) as resp:
+            resp.raise_for_status()
+            return CDNEntry(filename=filename, session=self._session)
+
+    async def upload_file(self, file: File) -> CDNEntry:
+        """Upload a file to the CDN from a discord.File object."""
+        return await self.upload(file.fp, file.filename)
+
+    async def delete(self, entry: CDNEntry | str) -> None:
+        """Deletes a file from the CDN. Entry can be a :class:`CDNEntry` object or a filename."""
+        if isinstance(entry, CDNEntry):
+            entry = entry.filename
+
+        entry = entry.removeprefix(BASE_URL + '/uploads/')
+
+        async with self._session.delete(f'{BASE_URL}/uploads/{entry}', headers=HEADERS) as resp:
+            resp.raise_for_status()
