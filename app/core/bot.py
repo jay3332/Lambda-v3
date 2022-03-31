@@ -168,12 +168,12 @@ class Bot(commands.Bot):
         self.prepare_jishaku_flags()
         self.prepare_logger()
 
-        self.cdn = CDNClient(self)
         self.db = Database(loop=self.loop)
         self.fonts = FontManager()
         self.session = ClientSession()
         self.user_to_member_mapping = {}
         self.timers = TimerManager(self)
+        self.cdn = CDNClient(self)
 
         web_app.bot = self
         self.web = web_app
