@@ -9,8 +9,9 @@ import discord
 from discord.ext import commands
 
 from app.core import Cog, Context, Flags, REPLY, command, cooldown, flag, group, store_true
+from app.core.helpers import user_max_concurrency
 from app.features.leveling.core import LevelingManager
-from app.features.leveling.rank_card import Font as RankCardFont
+from app.features.leveling.rank_card import Font as RankCardFont, RankCard
 from app.util import converter
 from app.util.common import progress_bar
 from app.util.image import ImageFinder
@@ -38,6 +39,7 @@ def module_enabled() -> Callable[[T], T]:
 
 class RankCardFlags(Flags):
     embed: bool = store_true(short='e')
+    my_card: bool = store_true(name='my-card', aliases=('my-rank-card', 'mrc', 'mc'), short='m')
 
 
 @converter
@@ -47,24 +49,34 @@ async def RankCardFontConverter(_, argument: str) -> RankCardFont:
     except KeyError:
         pass
 
-    for name, font in RankCardFont._member_map_:
+    for name, font in RankCardFont._member_map_.items():
+        font: RankCardFont
         matcher = SequenceMatcher(None, name, argument)
         if matcher.ratio() > 0.85:
             return font
 
     raise commands.BadArgument(
-        f'{argument} is not a valid rank card font. Choices: {", ".join(RankCardFont._member_names_)}',
+        f'{argument!r} is not a valid rank card font. Choices: {", ".join(RankCardFont._member_names_)}',
     )
 
 
 @converter
 async def ImageUrlConverter(ctx: Context, argument: str) -> str:
+    if argument.startswith('attachment://'):
+        filename = argument[13:]
+        argument = discord.utils.get(ctx.message.attachments, url=filename)
+        if not argument:
+            raise commands.BadArgument(f'attachment {filename!r} not found')
+
+    elif not argument.startswith(('https://', 'http://')):
+        raise commands.BadArgument('image url must start with https:// or http://')
+
     finder = ImageFinder(max_size=3 * 1024 * 1024)  # 3 MB
     result = await finder.sanitize(
         argument,
         session=ctx.bot.session,
         allowed_suffixes={'.png', '.jpg', '.jpeg'},
-        allowed_content_types={'image/png', 'image/jpeg'},
+        allowed_content_types={'image/png', 'image/jpg', 'image/jpeg'},
     )
 
     return await ctx.bot.cdn.upload(
@@ -107,7 +119,11 @@ class RankCardEditFlags(Flags):
     font: RankCardFontConverter = flag(short='f')
 
     # Background
-    background: ImageUrlConverter = flag(aliases=('bg', 'background-image', 'img', 'image'), short='b')
+    background_url: ImageUrlConverter = flag(
+        name='background',
+        aliases=('bg', 'background-image', 'background-url', 'img', 'image'),
+        short='b',
+    )
     background_color: discord.Colour = flag(
         name='background-color',
         aliases=('background-colour', 'color', 'colour', 'bc'),
@@ -140,8 +156,8 @@ class RankCardEditFlags(Flags):
     )
 
     # Progress Bar
-    progress_bar_color: discord.Colour = flag(name='progress-bar-color', aliases=('progress-bar', 'pb'), short='p')
-    progress_bar_alpha: AlphaQuantity = flag(name='progress-bar-alpha', aliases=('pa', 'progress-bar-alpha'), short='h')
+    progress_bar_color: discord.Colour = flag(name='progress-bar-color', aliases=('progress-bar', 'pb'))
+    progress_bar_alpha: AlphaQuantity = flag(name='progress-bar-alpha', alias='h')
 
 
 class Leveling(Cog):
@@ -190,6 +206,7 @@ class Leveling(Cog):
 
     @command(aliases=('level', 'lvl', 'lv', 'xp', 'exp'), bot_permissions=('attach_files',))
     @cooldown(1, 5)
+    @user_max_concurrency(1)
     @module_enabled()
     async def rank(self, ctx: Context, *, user: discord.Member = None, flags: RankCardFlags) -> CommandResponse:
         """View your or another user's level, rank, XP.
@@ -201,9 +218,10 @@ class Leveling(Cog):
 
         Flags:
         - `--embed`: Whether to return the response as an embed. This is useful if you don't want to wait rendering.
+        - `--my-card`: Whether to show the rank card as based off of your rank card instead of the user's.
         """
         user = user or ctx.author
-        rank_card = await self.manager.fetch_rank_card(user)
+        rank_card = await self.manager.fetch_rank_card(ctx.author if flags.my_card else user)
         record = self.manager.user_stats_for(user)
         await record.fetch_if_necessary()
 
@@ -222,18 +240,42 @@ class Leveling(Cog):
             return embed, REPLY
 
         async with ctx.typing():
-            result = await rank_card.render(rank=record.rank, level=record.level, xp=record.xp, max_xp=record.max_xp)
+            result = await rank_card.render(user=user, rank=record.rank, level=record.level, xp=record.xp, max_xp=record.max_xp)
 
         return f'Rank card for **{user}**:', discord.File(result, filename=f'rank_card_{user.id}.png'), REPLY
 
-    @group(aliases=('rc', 'card', 'rankcard', 'levelcard', 'level-card'), bot_permissions=('attach_files',))
+    @group('rank-card', aliases=('rc', 'card', 'rankcard', 'levelcard', 'level-card'), bot_permissions=('attach_files',))
     async def rank_card(self, ctx: Context) -> None:
         """Commands for modifying your rank card."""
         await ctx.send_help(ctx.command)
 
     @rank_card.command('edit', aliases=('e', 'overwrite', 'override', 'set', 'update'), bot_permissions=('attach_files',))
     @cooldown(1, 5)
+    @user_max_concurrency(1)
     async def rank_card_edit(self, ctx: Context, *, flags: RankCardEditFlags) -> CommandResponse:
-        """Edits your rank card."""  # TODO: document flags
-        print(dict(flags))  # type: ignore
-        return f'{ctx.author}, WIP'
+        """Edits your rank card. See `{PREFIX}help rank-card` to view all subcommands, else this command will update everything in one go.
+
+        Every configuration option in this command will be passed via flags, see the command signature above for more information.
+
+        Flag Information:
+        - The `--background` flag ONLY takes URLs as arguments. Pass in `attachment://filename` to reference and attachment.
+        - The `--background-blur` flag only accepts arguments between 0 and 20.
+        - The `--overlay-border-radius` flag only accepts arguments between 0 and 80.
+        - The `--avatar-border-radius` flag only accepts arguments between 0 and 139.
+        - You MUST put a `#` before the hex value (if you pass in hex) in all flags with names ending in "color".\\*
+        - All flags with names ending in "alpha" take floating-point numbers from 0.0 to 1.0.
+
+        \\* If you aren't passing in hex you may disregard this message.
+        """
+        kwargs = {
+            k: v.value if k.endswith('color') or isinstance(v, RankCardFont) else v
+            for k, v in flags  # type: ignore
+            if v is not None
+        }
+        card = await self.manager.fetch_rank_card(ctx.author)
+        await card.update(**kwargs)
+
+        async with ctx.typing():
+            result = await card.render(rank=3, level=5, xp=40, max_xp=100)
+
+        return 'Rank card updated:', discord.File(result, f'rank_card_preview_{ctx.author.id}.png'), REPLY

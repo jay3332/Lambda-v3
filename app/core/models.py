@@ -306,6 +306,13 @@ class GroupCommand(commands.Group, Command):
 
         return decorator
 
+    @discord.utils.copy_doc(commands.Group.add_command)
+    def add_command(self, command: Command, /) -> None:
+        if isinstance(command, Command):
+            command.transform_flag_parameters()
+
+        super().add_command(command)
+
 
 @discord.utils.copy_doc(commands.Context)
 class Context(TypedContext):

@@ -25,7 +25,7 @@ from app.util.tags import (
 )
 
 if TYPE_CHECKING:
-    from discord import Guild, Member
+    from discord import Guild, Member, User
 
     from app.core import Bot
     from app.util.types import (
@@ -371,7 +371,7 @@ class LevelingManager:
             self.configs[guild] = res = LevelingConfig(data=data, bot=self.bot)
             return res
 
-    async def fetch_rank_card(self, member: Member) -> RankCard:
+    async def fetch_rank_card(self, member: Member | User) -> RankCard:
         try:
             return self.rank_cards[member.id]
         except KeyError:

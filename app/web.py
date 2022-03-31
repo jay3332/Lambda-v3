@@ -6,6 +6,7 @@ from collections import defaultdict
 from functools import wraps
 from typing import Callable, ParamSpec, TYPE_CHECKING, TypeVar
 
+import discord
 from discord.http import Route
 from quart import Quart, Request, Response, jsonify, make_response, request
 
@@ -13,6 +14,7 @@ from config import client_secret
 
 if TYPE_CHECKING:
     from app.core import Bot
+    from app.features.leveling.core import LevelingManager
     from app.util.types import JsonObject
 
     class _Quart(Quart):
@@ -289,6 +291,38 @@ async def remove_prefix(guild_id: int) -> JsonObject | tuple[JsonObject, int]:
     return {
         'success': True,
         'prefixes': record.prefixes,
+    }
+
+
+@app.route('/rank-card/<int:user_id>', methods=['GET', 'OPTIONS'])
+@handle_cors
+async def rank_card(user_id: int) -> JsonObject | tuple[JsonObject, int]:
+    manager: LevelingManager = await app.bot.get_cog('Leveling').manager
+    user = app.bot.get_user(user_id)
+    if not user:
+        return {
+            'error': 'User not found'
+        }, 404
+
+    record = await manager.fetch_rank_card(user)
+    # respond with camelCase because front-end takes it
+    return {
+        'font': record.font.value,
+        'primaryColor': record.data['primary_color'],
+        'secondaryColor': record.data['secondary_color'],
+        'tertiaryColor': record.data['tertiary_color'],
+        'backgroundUrl': record.background_url,
+        'backgroundColor': record.data['background_color'],
+        'backgroundImageAlpha': record.background_image_alpha / 255,
+        'backgroundBlur': record.background_blur,
+        'overlayColor': record.data['overlay_color'],
+        'overlayAlpha': record.data['overlay_alpha'],
+        'overlayBorderRadius': record.overlay_border_radius,
+        'avatarBorderColor': record.data['avatar_border_color'],
+        'avatarBorderAlpha': record.data['avatar_border_alpha'],
+        'avatarBorderRadius': record.avatar_border_radius,
+        'progressBarColor': record.data['progress_bar_color'],
+        'progressBarAlpha': record.data['progress_bar_alpha'],
     }
 
 

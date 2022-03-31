@@ -63,26 +63,26 @@ class BaseRankCard:
     @overload
     @classmethod
     def manual(
-        cls: Type[BaseRankCard],
-        *,
-        user: Member | User,
-        bot: Bot,
-        font: Font,
-        primary_color: RGBColor,
-        secondary_color: RGBColor,
-        tertiary_color: RGBColor,
-        background_url: str | None,
-        background_color: RGBColor,
-        background_image_alpha: int,
-        background_blur: int,
-        overlay_color: RGBColor,
-        overlay_alpha: float,
-        overlay_border_radius: int,
-        avatar_border_color: RGBColor,
-        avatar_border_alpha: float,
-        avatar_border_radius: int,
-        progress_bar_color: RGBColor,
-        progress_bar_alpha: float,
+            cls: Type[BaseRankCard],
+            *,
+            user: Member | User,
+            bot: Bot,
+            font: Font = ...,
+            primary_color: RGBColor = ...,  # these should actually be ints
+            secondary_color: RGBColor = ...,
+            tertiary_color: RGBColor = ...,
+            background_url: str | None = ...,
+            background_color: RGBColor = ...,
+            background_image_alpha: float = ...,
+            background_blur: int = ...,
+            overlay_color: RGBColor = ...,
+            overlay_alpha: float = ...,
+            overlay_border_radius: int = ...,
+            avatar_border_color: RGBColor = ...,
+            avatar_border_alpha: float = ...,
+            avatar_border_radius: int = ...,
+            progress_bar_color: RGBColor = ...,
+            progress_bar_alpha: float = ...,
     ) -> BaseRankCard:
         ...
 
@@ -91,6 +91,7 @@ class BaseRankCard:
         return cls(data={**kwargs, 'user_id': user.id}, user=user, bot=bot)  # type: ignore
 
     def _from_data(self, data: RankCardPayload) -> None:
+        self.data: RankCardPayload = data
         self.user_id: int = data['user_id']
         self.font: Font = Font(data['font'])
 
@@ -188,11 +189,14 @@ class RankCard(BaseRankCard):
         background: Image.Image,
         avatar_bytes: bytes,
         *,
+        user: Member | None = None,
         rank: int | None = None,
         level: int,
         xp: int,
         max_xp: int,
     ) -> BytesIO:
+        user = user or self.user
+
         with Image.new('RGBA', (1250, 460)) as image:
             with Image.new('RGBA', (1250, 460), self.overlay_color) as overlay:
                 with rounded_mask(overlay.size, self.overlay_border_radius) as mask:
@@ -250,7 +254,7 @@ class RankCard(BaseRankCard):
                 pilmoji.text((offset + original, 359), str(level), self.primary_color, font)
 
                 # Username
-                username = self.user.name
+                username = user.name
                 font = FallbackFont(
                     get_font(size=55),
                     lambda: fonts.get('./assets/fonts/' + FONT_MAPPING[Font.ARIAL_UNICODE.value], size=55),
@@ -262,7 +266,7 @@ class RankCard(BaseRankCard):
 
                 # Discriminator
                 font = get_font(size=50)
-                text = '#' + self.user.discriminator
+                text = '#' + user.discriminator
                 pilmoji.text((409 + width, 194), text, (*self.secondary_color[:3], 190), font)  # type: ignore
 
                 # Rank
@@ -295,11 +299,20 @@ class RankCard(BaseRankCard):
 
                 return buffer
 
-    async def render(self, *, rank: int, level: int, xp: int, max_xp: int) -> BytesIO:
+    async def render(
+        self,
+        *,
+        rank: int,
+        level: int,
+        xp: int,
+        max_xp: int,
+        user: Member | None = None,
+    ) -> BytesIO:
         background_bytes = await self.fetch_background_bytes()
         background = await self.prepare_background(background_bytes)  # type: ignore
 
-        avatar = self.user.avatar or self.user.default_avatar
+        user = user or self.user
+        avatar = user.avatar or user.default_avatar
         avatar = await avatar.with_format('png').with_size(512).read()
 
-        return await self._render(background, avatar, rank=rank, level=level, xp=xp, max_xp=max_xp)
+        return await self._render(background, avatar, user=user, rank=rank, level=level, xp=xp, max_xp=max_xp)

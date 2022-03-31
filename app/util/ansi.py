@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import re
 from enum import IntEnum
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, Type, TypeAlias
 
 from discord import User
 
@@ -85,12 +86,15 @@ def ansi_identifier(
 class AnsiStringBuilder:
     """Aids in building an ANSI string."""
 
-    __slots__ = ('buffer', '_raw', '_persisted_kwargs')
+    __slots__ = ('buffer', '_raw', '_persisted_kwargs', '_length_offset')
+
+    ANSI_SPLIT_REGEX: re.Pattern[str] = re.compile(r'((?:\x1b\[(?:\d{1,2};)*\d{1,2}m)+)')
 
     def __init__(self, string: str = '') -> None:
         self.buffer: str = string
         self._raw: str = string
 
+        self._length_offset: int = 0
         self._persisted_kwargs: dict[str, AnsiIdentifierKwargs] = {}
 
     def append(self, string: str, *, clear: bool = True, **kwargs: AnsiIdentifierKwargs) -> AnsiStringBuilder:
@@ -184,8 +188,15 @@ class AnsiStringBuilder:
         self._persisted_kwargs = {}
         return self
 
-    def build(self) -> str:
+    def build(self, *, optimize: bool = True) -> str:
         """Returns the built string."""
+        if optimize:
+            self.optimize()
+
+        if len(self) > 1000:
+            # Currently, Discord does not render ANSI if it is above 1,000 characters.
+            return self._raw
+
         return self.buffer
 
     @property
@@ -202,6 +213,7 @@ class AnsiStringBuilder:
         if not self.buffer.startswith('```'):
             self.buffer = '```ansi\n' + self.buffer + '```'
             self._raw = f'```{fallback}\n' + self.raw + '```'
+            self._length_offset += 11
 
         return self
 
@@ -216,11 +228,77 @@ class AnsiStringBuilder:
 
         return self.build()
 
+    @staticmethod
+    def _is_valid_enum(enum: Type[IntEnum], value: int) -> bool:
+        try:
+            enum(value)
+        except ValueError:
+            return False
+        else:
+            return True
+
+    def optimize(self) -> AnsiStringBuilder:
+        """Optimize the ANSI content for optimal length. This may be slow."""
+        previous_color = 0
+        previous_background_color = 0
+        previous_format = 0
+        result = []
+
+        for i, part in enumerate(self.ANSI_SPLIT_REGEX.split(self.buffer)):
+            if not i % 2:
+                result += part
+                continue
+
+            parts = part.split('\x1b')[1:]
+            parts = [p for part in parts for p in part[1:-1].split(';')]
+            if not parts:
+                continue
+
+            color = background_color = fmt = 0
+            for spec in parts:
+                if spec == '0':
+                    color = background_color = fmt = 0
+                    continue
+
+                spec = int(spec)
+                if self._is_valid_enum(AnsiColor, spec):
+                    color = spec
+
+                elif self._is_valid_enum(AnsiBackgroundColor, spec):
+                    background_color = spec
+
+                elif self._is_valid_enum(AnsiStyle, spec):
+                    fmt = spec
+
+            specs = []
+            if color != previous_color:
+                specs.append(color)
+                previous_color = color
+
+            if background_color != previous_background_color:
+                specs.append(background_color)
+                previous_background_color = background_color
+
+            if fmt != previous_format:
+                specs.append(fmt)
+                previous_format = fmt
+
+            if not any(specs):
+                specs = [0]
+
+            if specs:
+                specs.sort()
+                result.append(f'\x1b[{";".join(map(str, specs))}m')
+
+        result = ''.join(result)
+        self.buffer = result
+        return self
+
     def __str__(self) -> str:
         return self.build()
 
     def __len__(self) -> int:
-        return len(self.buffer)
+        return len(self.buffer) - self._length_offset
 
     def __repr__(self) -> str:
         return f'<AnsiStringBuilder: {self.buffer!r}>'
