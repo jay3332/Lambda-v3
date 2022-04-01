@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import BinaryIO, Final, NamedTuple, TYPE_CHECKING
 
 from aiohttp import ClientSession, FormData
-from discord.utils import cached_property
 
 from config import cdn_authorization
 
@@ -27,7 +26,7 @@ class CDNEntry(NamedTuple):
     filename: str
     session: ClientSession | None = None
 
-    @cached_property
+    @property
     def url(self) -> str:
         return BASE_URL + f'/uploads/{self.filename}'
 
