@@ -163,6 +163,8 @@ class RankCardEditFlags(Flags):
 class Leveling(Cog):
     """Interact with Lambda's robust and feature-packed leveling system."""
 
+    emoji = '\U0001f3c5'
+
     if TYPE_CHECKING:
         manager: LevelingManager
 
@@ -197,18 +199,18 @@ class Leveling(Cog):
         config = await self.manager.fetch_guild_config(ctx.guild.id)
 
         if toggle is None:
-            return f'The leveling module is currently **{self._enabled_text(config.module_enabled)}**.'
+            return f'The leveling module is currently **{self._enabled_text(config.module_enabled)}**.', REPLY
 
         if toggle is not config.module_enabled:
             await config.update(module_enabled=toggle)
 
-        return f'Leveling module now set to **{self._enabled_text(toggle)}**.'
+        return f'Leveling module now set to **{self._enabled_text(toggle)}**.', REPLY
 
-    @command(aliases=('level', 'lvl', 'lv', 'xp', 'exp'), bot_permissions=('attach_files',))
+    @command(aliases=('r', 'level', 'lvl', 'lv', 'xp', 'exp'), bot_permissions=('attach_files',))
     @cooldown(1, 5)
     @user_max_concurrency(1)
     @module_enabled()
-    async def rank(self, ctx: Context, *, user: discord.Member = None, flags: RankCardFlags) -> CommandResponse:
+    async def rank(self, ctx: Context, *, user: discord.Member | None = None, flags: RankCardFlags) -> CommandResponse:
         """View your or another user's level, rank, XP.
 
         If you don't specify a user, your own level will be shown.

@@ -1,28 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import random
-from collections import defaultdict, OrderedDict
-from typing import Any, NamedTuple, overload, TypeVar, TYPE_CHECKING
+from collections import OrderedDict, defaultdict
+from typing import Any, NamedTuple, TYPE_CHECKING, TypeVar, overload
 
 import discord
 from discord.abc import Snowflake as HasId
 from discord.ext.commands import BucketType, CooldownMapping
-from discord.http import handle_message_parameters
 
+from app.util.tags import execute_tags
 from .rank_card import RankCard
-from app.util.tags import (
-    ConditionalTransformer, EmbedTransformer,
-    Environment,
-    LevelingMetadata,
-    LevelingTransformer,
-    MetaTransformer,
-    RandomTransformer,
-    TransformerRegistry,
-    UserTransformer,
-    parse
-)
 
 if TYPE_CHECKING:
     from discord import Guild, Member, User
@@ -239,26 +229,7 @@ class LevelingRecord:
             level,
             self.level_config.level_up_message,
         )
-        env = Environment(metadata=LevelingMetadata(message=message, level=level))
-        output = await parse(
-            content,
-            env=env,
-            transformers=TransformerRegistry(
-                MetaTransformer,
-                RandomTransformer,
-                UserTransformer,
-                LevelingTransformer,
-                EmbedTransformer,
-                ConditionalTransformer,
-            ),
-            silent=True,
-        )
-
-        if not output and not env.embed:
-            return
-
-        params = handle_message_parameters(content=output, embed=env.embed)
-        await self._bot.http.send_message(channel_id, params=params)
+        await execute_tags(bot=self._bot, message=message, channel=channel_id, content=content)
 
     async def update_roles(self, level: int) -> None:
         roles = self.level_config.level_roles
@@ -290,14 +261,17 @@ class LevelingRecord:
         await self.fetch_if_necessary()
 
         self.xp += xp
+        tasks = []
 
         if xp > 0 and self.xp > self.max_xp:
             while self.xp > self.max_xp:
                 self.xp -= self.max_xp
                 self.level += 1
 
-            self._bot.loop.create_task(self.send_level_up_message(self.level, message))
-            self._bot.loop.create_task(self.update_roles(self.level))
+            tasks.extend((
+                self.send_level_up_message(self.level, message),
+                self.update_roles(self.level),
+            ))
 
         elif xp < 0:
             while self.xp < 0 and self.level >= 0:
@@ -305,6 +279,8 @@ class LevelingRecord:
                 self.level -= 1
 
         await self.update(level=self.level, xp=self.xp)
+        await asyncio.gather(*tasks)
+
         return self.level, self.xp
 
     async def fetch(self) -> LevelingRecord:

@@ -22,14 +22,15 @@ from typing import (
 )
 
 import discord
-from discord.ext.commands import ColourConverter
+from discord.ext.commands import BadColourArgument, ColourConverter
+from discord.http import handle_message_parameters
 from discord.utils import maybe_coroutine, valid_icon_size
 
 from app.util import cutoff
 from app.util.common import ordinal, preinstantiate
 
 if TYPE_CHECKING:
-    from app.core import Context
+    from app.core import Bot
 
 __all__ = (
     'transform',
@@ -40,13 +41,16 @@ __all__ = (
     'Parser',
     'parse',
     'DiscordMetadata',
-    'LevelingMetadata',
     'RandomTransformer',
     'MetaTransformer',
     'UserTransformer',
     'LevelingTransformer',
     'EmbedTransformer',
     'ConditionalTransformer',
+    'ViewTransformer',
+    'VariableTransformer',
+    'create_transformer_registry',
+    'execute_tags',
 )
 
 P = ParamSpec('P')
@@ -73,24 +77,8 @@ def transform(*names: str, split_args: bool = True, evaluate_modifier: bool = Tr
 
 
 class DiscordMetadata(NamedTuple):
-    ctx: Context
-
-    @property
-    def user(self) -> discord.Member:
-        return self.ctx.author
-
-    @property
-    def guild(self) -> discord.Guild:
-        return self.ctx.guild
-
-    @property
-    def channel(self) -> discord.TextChannel:
-        return self.ctx.channel
-
-
-class LevelingMetadata(NamedTuple):
     message: discord.Message
-    level: int
+    bot: Bot
 
     @property
     def user(self) -> discord.Member:
@@ -108,10 +96,12 @@ class LevelingMetadata(NamedTuple):
 class Environment(Generic[T]):
     """Represents a tag parsing environment."""
 
-    def __init__(self, metadata: T) -> None:
-        self.metadata: T = metadata
+    def __init__(self, *, message: discord.Message, bot: Bot) -> None:
+        self.metadata: T = DiscordMetadata(message, bot)
         self.vars: dict[str, Any] = {}
+
         self.embed: discord.Embed | None = None
+        self.view: discord.ui.View | None = None
 
     def get_embed(self) -> discord.Embed:
         if self.embed is None:
@@ -119,9 +109,11 @@ class Environment(Generic[T]):
 
         return self.embed
 
-    @property
-    def ctx(self) -> Context:
-        return self.metadata.ctx
+    def get_view(self) -> discord.ui.View:
+        if self.view is None:
+            self.view = discord.ui.View()
+
+        return self.view
 
 
 class TransformerCallback(Generic[EnvironmentT, P, T]):
@@ -273,6 +265,9 @@ class TransformerRegistry(Generic[TransformerT]):
 
     def remove_transformer(self, transformer: TransformerT) -> None:
         self.transformers.remove(transformer)
+
+    def copy(self) -> TransformerRegistry[TransformerT]:
+        return TransformerRegistry(*self.transformers)
 
 
 class Node:
@@ -644,6 +639,8 @@ class MetaTransformer(Transformer[Any]):
     async def comment(self, *_) -> str:
         return ''
 
+    # TODO: {math: 1 + 1}
+
 
 @preinstantiate()
 class RandomTransformer(Transformer[Any]):
@@ -682,8 +679,6 @@ class RandomTransformer(Transformer[Any]):
             raise ValueError('choice takes at least 1 argument')
 
         return random.choice(args)
-
-    # TODO: {math: 1 + 1}
 
 
 class _SupportsUser(Protocol):
@@ -792,11 +787,29 @@ class UserTransformer(Transformer[Environment[_SupportsUser]]):
 
 
 @preinstantiate()
-class LevelingTransformer(Transformer[Environment[LevelingMetadata]]):
+class LevelingTransformer(Transformer[Environment[DiscordMetadata]]):
+    @staticmethod
+    async def _get_record(env: Environment[DiscordMetadata]):
+        cog = env.metadata.bot.get_cog('Leveling')
+        if cog is None:
+            raise RuntimeError('Leveling cog not found.')
+
+        record = cog.manager.user_stats_for(env.metadata.user)  # type: ignore
+        await record.fetch_if_necessary()
+
+        return record
+
     @transform('level', 'lvl', 'lv')
-    def level(self, env: Environment[LevelingMetadata], *_) -> int:
+    async def level(self, env: Environment[DiscordMetadata], *_) -> int:
         """Return the current level of the author of the current message."""
-        return env.metadata.level
+        record = await self._get_record(env)
+        return record.level
+
+    @transform('xp', 'exp')
+    async def xp(self, env: Environment[DiscordMetadata], *_) -> int:
+        """Return the current XP of the author of the current message."""
+        record = await self._get_record(env)
+        return record.xp
 
 
 @preinstantiate()
@@ -809,36 +822,274 @@ class EmbedTransformer(Transformer[Environment[Any]]):
 
         env.embed = discord.Embed.from_dict(json.loads(modifier))
 
-    @embed.transform('title')
-    def embed_title(self, env: Environment[Any], _, *args: str) -> None:
+    @embed.transform('title', split_args=False)
+    def embed_title(self, env: Environment[Any], _, arg: str) -> None:
         """Set the title of the embed of the current message."""
-        try:
-            env.get_embed().title = args[0]
-        except IndexError:
+        if not arg:
             raise ValueError('no title specified')
 
-    @embed.transform('description')
-    def embed_description(self, env: Environment[Any], _, *args: str) -> None:
+        env.get_embed().title = arg
+
+    @embed.transform('description', split_args=False)
+    def embed_description(self, env: Environment[Any], _, arg: str) -> None:
         """Set the description of the embed of the current message."""
-        try:
-            env.get_embed().description = args[0]
-        except IndexError:
+        if not arg:
             raise ValueError('no description specified')
 
-    @embed.transform('url')
-    def embed_url(self, env: Environment[Any], _, *args: str) -> None:
-        """Set the URL of the embed of the current message."""
-        try:
-            env.get_embed().url = args[0]
-        except IndexError:
-            raise ValueError('no URL specified')
+        env.get_embed().description = arg
 
-    @embed.transform('color', 'colour')
-    async def embed_color(self, env: Environment[Any], _, *args: str) -> None:
+    @embed.transform('url', split_args=False)
+    def embed_url(self, env: Environment[Any], _, arg: str) -> None:
+        """Set the URL of the embed of the current message."""
+        if not arg:
+            raise ValueError('no url specified')
+
+        env.get_embed().url = arg.strip('< >')
+
+    @embed.transform('color', 'colour', split_args=False)
+    async def embed_color(self, env: Environment[Any], _, arg: str) -> None:
         """Set the color of the embed of the current message."""
-        try:
-            env.get_embed().colour = await ColourConverter().convert(None, args[0])  # type: ignore
-        except IndexError:
+        if not arg:
             raise ValueError('no color specified')
 
-    # TODO: author, footer, thumbnail, image, fields, timestamp
+        try:
+            env.get_embed().colour = await ColourConverter().convert(None, arg)  # type: ignore
+        except BadColourArgument:
+            raise ValueError('invalid color specified')
+
+    @embed.transform('author', 'name', split_args=False)
+    async def embed_author(self, env: Environment[Any], _, arg: str) -> None:
+        """Set the name of the author of the embed of the current message."""
+        if not arg:
+            raise ValueError('no author specified')
+
+        icon = env.embed and env.embed.author.icon_url
+        url = env.embed and env.embed.author.url
+        empty = discord.Embed.Empty
+
+        env.get_embed().set_author(name=arg, url=url or empty, icon_url=icon or empty)
+
+    @embed_author.transform('icon', 'icon-url', split_args=False)
+    async def embed_author_icon(self, env: Environment[Any], _, arg: str) -> None:
+        """Set the icon of the author of the embed of the current message."""
+        if not arg:
+            raise ValueError('no author icon specified')
+
+        name = env.embed and env.embed.author.name
+        url = env.embed and env.embed.author.url
+        empty = discord.Embed.Empty
+
+        env.get_embed().set_author(
+            name=name or '{error: Missing author name}',
+            url=url or empty,
+            icon_url=arg.strip('< >'),
+        )
+
+    @embed_author.transform('url', split_args=False)
+    async def embed_author_url(self, env: Environment[Any], _, arg: str) -> None:
+        """Set the url of the author of the embed of the current message."""
+        if not arg:
+            raise ValueError('no author url specified')
+
+        name = env.embed and env.embed.author.name
+        icon = env.embed and env.embed.author.icon_url
+        empty = discord.Embed.Empty
+
+        env.get_embed().set_author(
+            name=name or '{error: Missing author name}',
+            url=arg.strip('< >'),
+            icon_url=icon or empty,
+        )
+
+    @embed.transform('thumbnail', 'thumb', split_args=False)
+    async def embed_thumbnail(self, env: Environment[Any], _, arg: str) -> None:
+        """Set the thumbnail of the embed of the current message."""
+        if not arg:
+            raise ValueError('no thumbnail specified')
+
+        env.get_embed().set_thumbnail(url=arg.strip('< >'))
+
+    @embed.transform('image', 'img', split_args=False)
+    async def embed_image(self, env: Environment[Any], _, arg: str) -> None:
+        """Set the image of the embed of the current message."""
+        if not arg:
+            raise ValueError('no image specified')
+
+        env.get_embed().set_image(url=arg.strip('< >'))
+
+    @embed.transform('footer', 'foot', split_args=False)
+    async def embed_footer(self, env: Environment[Any], _, arg: str) -> None:
+        """Set the footer of the embed of the current message."""
+        if not arg:
+            raise ValueError('no footer specified')
+
+        icon_url = env.embed and env.embed.footer.icon_url or discord.Embed.Empty
+
+        env.get_embed().set_footer(text=arg, icon_url=icon_url)
+
+    @embed_footer.transform('icon', 'icon-url', split_args=False)
+    async def embed_footer_icon(self, env: Environment[Any], _, arg: str) -> None:
+        """Set the icon of the footer of the embed of the current message."""
+        if not arg:
+            raise ValueError('no footer icon specified')
+
+        text = env.embed and env.embed.footer.text or '{error: No text specified}'
+
+        env.get_embed().set_footer(text=text, icon_url=arg.strip('< >'))
+
+    @embed.transform('timestamp', 'time', split_args=False)
+    async def embed_timestamp(self, env: Environment[Any], _, arg: str) -> None:
+        """Set the timestamp of the embed of the current message."""
+        if not arg:
+            env.get_embed().timestamp = discord.utils.utcnow()
+            return
+
+        env.get_embed().timestamp = datetime.datetime.fromtimestamp(float(arg), tz=datetime.timezone.utc)
+
+    @embed.transform('field', 'add-field', 'create-field', split_args=False)
+    async def embed_field(self, env: Environment[Any], modifier: str, arg: str) -> None:
+        """Add a field to the embed of the current message."""
+        if not modifier:
+            raise ValueError('name of this field is required as a modifier')
+
+        if not arg:
+            raise ValueError('no value specified (first argument)')
+
+        env.get_embed().add_field(name=modifier, value=arg, inline=False)
+
+    @embed.transform('inline', 'inline-field', 'add-inline-field', 'create-inline-field', split_args=False)
+    async def embed_field_inline(self, env: Environment[Any], modifier: str, arg: str) -> None:
+        """Adds an inline field to this embed."""
+        if not modifier:
+            raise ValueError('name of this field is required as a modifier')
+
+        if not arg:
+            raise ValueError('no value specified (first argument)')
+
+        env.get_embed().add_field(name=modifier, value=arg, inline=True)
+
+
+@preinstantiate()
+class ViewTransformer(Transformer[Any]):
+    @transform('link', 'url', 'hyperlink', 'button-link', split_args=False)
+    async def link(self, env: Environment[Any], modifier: str, arg: str) -> None:
+        """Adds a button linking to the given URL."""
+        if not modifier:
+            raise ValueError('label of this link required as a modifier')
+
+        if not arg:
+            raise ValueError('no url specified (first argument)')
+
+        env.get_view().add_item(discord.ui.Button(label=modifier, url=arg.strip('< >')))
+
+    @transform('button', split_args=False)
+    async def button(self, env: Environment[Any], modifier: str, arg: str) -> None:
+        """Adds a button with responding the given text.
+
+        Buttons will always time out in 30 seconds, respond ephemerally and have no underlying checks.
+        """
+        if not modifier:
+            raise ValueError('label of this button required as a modifier')
+
+        if not arg:
+            raise ValueError('no response text specified (first argument)')
+
+        button = discord.ui.Button(label=modifier, style=discord.ButtonStyle.primary)
+
+        async def callback(interaction: discord.Interaction) -> None:
+            await interaction.response.send_message(arg[:4000], ephemeral=True)
+
+        button.callback = callback
+
+        env.get_view().timeout = 30
+        env.get_view().add_item(button)
+
+
+@preinstantiate()
+class VariableTransformer(Transformer[Any]):
+    @transform('declare', '=', 'var', 'variable', 'set', split_args=False)
+    async def declare(self, env: Environment[Any], modifier: str, arg: str) -> None:
+        """Sets a variable to the given value."""
+        if not modifier:
+            raise ValueError('name of this variable is required as a modifier')
+
+        # TODO: support arguments e.g. {=(hello):Hello $1!} -> {hello:World} -> Hello World!
+
+        name = modifier.casefold().strip()
+
+        if self.get_transformer_callback(name) is not None:
+            raise ValueError(f'variable/tag {name!r} already exists')
+
+        @transform(name, evaluate_modifier=False)
+        async def callback(_, c_env: Environment[Any], _modifier: str, *_c_args: str) -> None:
+            return c_env.vars[name]
+
+        self.transformers.append(callback)
+        callback.transformer = self
+
+        env.vars[name] = arg
+
+    @transform('get', 'getvar', 'valueof')
+    async def get(self, env: Environment[Any], modifier: str, *_: str) -> None:
+        """Gets the value of the given variable."""
+        if not modifier:
+            raise ValueError('name of this variable is required as a modifier')
+
+        name = modifier.casefold().strip()
+        try:
+            return env.vars[name]
+        except KeyError:
+            raise ValueError(f'variable {name!r} does not exist')
+
+
+def create_transformer_registry(*extra: Transformer[Any]) -> TransformerRegistry[Any]:
+    return TransformerRegistry(
+        MetaTransformer,
+        RandomTransformer,
+        UserTransformer,
+        LevelingTransformer,
+        EmbedTransformer,
+        ConditionalTransformer,
+        ViewTransformer,
+        VariableTransformer,
+        *extra,
+    )
+
+
+async def execute_tags(
+    *,
+    bot: Bot,
+    message: discord.Message,
+    channel: discord.abc.Messageable | int,
+    content: str,
+    env: Environment[Any] = None,
+    transformers: TransformerRegistry[Any] = None,
+    silent: bool = False,
+    **send_kwargs: Any,
+) -> None:
+    """Executes all tags in the given content."""
+    if transformers is None:
+        transformers = create_transformer_registry()
+
+    if not content:
+        return
+
+    env = env or Environment(message=message, bot=bot)
+
+    result = await parse(content, env=env, transformers=transformers, silent=silent)
+    kwargs = {
+        'content': result,
+        **send_kwargs,
+    }
+
+    if env.embed is not None:
+        kwargs['embed'] = env.embed
+
+    if env.view is not None:
+        kwargs['view'] = env.view
+
+    if isinstance(channel, int):
+        params = handle_message_parameters(**kwargs)
+        await bot.http.send_message(channel, params=params)
+
+    await channel.send(**kwargs)

@@ -122,7 +122,12 @@ class Command(commands.Command):
             if param.kind is not param.KEYWORD_ONLY:
                 continue
 
-            if issubclass(param.annotation, Flags):
+            try:
+                is_flags = issubclass(param.annotation, Flags)
+            except TypeError:
+                is_flags = False
+
+            if is_flags:
                 self.custom_flags = param.annotation
                 try:
                     default = self.custom_flags.default
