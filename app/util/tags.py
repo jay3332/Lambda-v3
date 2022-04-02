@@ -1005,7 +1005,6 @@ class ViewTransformer(Transformer[Any]):
         env.get_view().add_item(button)
 
 
-@preinstantiate()
 class VariableTransformer(Transformer[Any]):
     @transform('declare', '=', 'var', 'variable', 'set', split_args=False)
     async def declare(self, env: Environment[Any], modifier: str, arg: str) -> None:
@@ -1051,7 +1050,7 @@ def create_transformer_registry(*extra: Transformer[Any]) -> TransformerRegistry
         EmbedTransformer,
         ConditionalTransformer,
         ViewTransformer,
-        VariableTransformer,
+        VariableTransformer(),
         *extra,
     )
 
