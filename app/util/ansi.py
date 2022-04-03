@@ -284,7 +284,7 @@ class AnsiStringBuilder:
                 previous_format = fmt
 
             if not any(specs):
-                specs = [0]
+                specs = []
 
             if specs:
                 specs.sort()
