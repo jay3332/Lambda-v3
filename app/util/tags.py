@@ -1158,5 +1158,6 @@ async def execute_tags(
     if isinstance(channel, int):
         params = handle_message_parameters(**kwargs)
         await bot.http.send_message(channel, params=params)
+        return
 
     await channel.send(**kwargs)
