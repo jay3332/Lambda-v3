@@ -16,7 +16,7 @@ from typing import (
     NamedTuple,
     ParamSpec,
     Protocol,
-    Type,
+    SupportsFloat, Type,
     TypeVar,
     TYPE_CHECKING,
 )
@@ -135,6 +135,8 @@ class TransformerCallback(Generic[EnvironmentT, P, T]):
 
         self.parent: TransformerCallback | None = parent
         self.children: list[TransformerCallback] = []
+
+        self.var_transformer: bool = False
 
     @property
     def name(self) -> str:
@@ -310,16 +312,20 @@ class Parser:
             if modifier_count > 0:
                 continue
 
-            if char == '{':
+            if char == ':':
+                can_increase_modifier = False
+
+            elif char == '{':
                 buffers.append(i)
                 can_increase_modifier = True
 
             elif char == '}':
-                start = buffers.pop()
-                yield Node(start, i + 1)
-                can_increase_modifier = False
+                try:
+                    start = buffers.pop()
+                except IndexError:
+                    continue
 
-            elif char == ':':
+                yield Node(start, i + 1)
                 can_increase_modifier = False
 
     @staticmethod
@@ -535,7 +541,7 @@ class ConditionalTransformer(Transformer[Any]):
 @preinstantiate()
 class MetaTransformer(Transformer[Any]):
     @transform('char-at', 'charAt', 'getchar', 'char', split_args=False)
-    async def char_at(self, _, modifier: str, arg: str) -> str:
+    def char_at(self, _, modifier: str, arg: str) -> str:
         if not modifier or not arg:
             raise ValueError('char-at requires a modifier (index) and an argument (string)')
 
@@ -550,23 +556,23 @@ class MetaTransformer(Transformer[Any]):
             raise IndexError('character out of range')
 
     @transform('escape', split_args=False, evaluate_modifier=False)
-    async def escape(self, _, modifier: str, arg: str) -> str:
+    def escape(self, _, modifier: str, arg: str) -> str:
         return (arg or modifier).replace(';', '\\;')
 
     @transform('length', 'len', 'size', split_args=False)
-    async def length(self, _, modifier: str, arg: str) -> int:
+    def length(self, _, modifier: str, arg: str) -> int:
         return len(arg or modifier)
 
     @transform('lowercase', 'lower', split_args=False)
-    async def lowercase(self, _, modifier: str, arg: str) -> str:
+    def lowercase(self, _, modifier: str, arg: str) -> str:
         return (arg or modifier).lower()
 
     @transform('uppercase', 'upper')
-    async def uppercase(self, _, modifier: str, arg: str) -> str:
+    def uppercase(self, _, modifier: str, arg: str) -> str:
         return (arg or modifier).upper()
 
     @transform('replace', 'repl', 'sub')
-    async def replace(self, _, modifier: str, *args: str) -> str:
+    def replace(self, _, modifier: str, *args: str) -> str:
         if len(args) != 2:
             raise ValueError('replace requires exactly two arguments')
 
@@ -574,7 +580,7 @@ class MetaTransformer(Transformer[Any]):
         return modifier.replace(from_, to)
 
     @transform('repeat', 'rep', split_args=False)
-    async def repeat(self, _, modifier: str, arg: str) -> str:
+    def repeat(self, _, modifier: str, arg: str) -> str:
         if not arg:
             raise ValueError('repeat requires an argument')
 
@@ -592,7 +598,7 @@ class MetaTransformer(Transformer[Any]):
         return arg * modifier
 
     @transform('strip', 'trim', 'truncate', split_args=False)
-    async def strip(self, _, modifier: str, arg: str) -> str:
+    def strip(self, _, modifier: str, arg: str) -> str:
         """Usage: {strip(<>):<my-string>} -> my-string"""
         if not modifier:
             modifier = ' \n'
@@ -600,7 +606,7 @@ class MetaTransformer(Transformer[Any]):
         return arg.strip(modifier)
 
     @transform('round', 'rnd', split_args=False)
-    async def round(self, _, modifier: str, arg: str) -> int:
+    def round(self, _, modifier: str, arg: str) -> int:
         try:
             num = float(arg or modifier)
         except ValueError:
@@ -608,7 +614,19 @@ class MetaTransformer(Transformer[Any]):
 
         return round(num)
 
-    @transform('ordinal', 'ord', split_args=False)
+    @transform('comma', 'commafy', split_args=False)
+    async def comma(self, _, modifier: str, arg: str) -> str:
+        try:
+            num = float(arg or modifier)
+        except ValueError:
+            raise ValueError('comma requires a number argument')
+
+        if num.is_integer():
+            num = int(num)  # float will add a .0 after the number, we don't want that
+
+        return f'{num:,}'
+
+    @transform('ordinal', 'ord', 'nth', split_args=False)
     async def ordinal(self, _, modifier: str, arg: str) -> str:
         try:
             num = int(arg or modifier)
@@ -617,8 +635,36 @@ class MetaTransformer(Transformer[Any]):
 
         return ordinal(num)
 
+    def _get_key(self, env: Environment[Any], key: str) -> Callable[[str], float]:
+        if tag := self.get_transformer_callback(key.strip().casefold()):
+            callback = tag.callback
+            if not inspect.iscoroutinefunction(callback):
+                return lambda arg: float(callback(self, env, '', arg))
+
+        return float
+
+    @transform('max', 'largest', 'maximum', 'greatest')
+    async def max(self, env: Environment[Any], modifier: str, *args: str) -> str:
+        """Modifier is the tag key for the value, e.g. {max(length):a;ab;abc} -> abc"""
+        try:
+            result = max(args, key=self._get_key(env, modifier))
+        except ValueError:
+            raise ValueError('max only takes number arguments')
+
+        return result
+
+    @transform('min', 'smallest', 'minimum', 'least')
+    async def min(self, env: Environment[Any], modifier: str, *args: str) -> str:
+        """Modifier is the tag key for the value, e.g. {min(length):a;ab;abc} -> a"""
+        try:
+            result = min(args, key=self._get_key(env, modifier))
+        except ValueError:
+            raise ValueError('min only takes number arguments')
+
+        return result
+
     @transform('cutoff')
-    async def cutoff(self, _, modifier: str, arg: str) -> str:
+    def cutoff(self, _, modifier: str, arg: str) -> str:
         if not modifier or not arg:
             raise ValueError('cutoff requires a modifier (max length) and an argument (string)')
 
@@ -636,7 +682,7 @@ class MetaTransformer(Transformer[Any]):
         return cutoff(arg, modifier)
 
     @transform('comment', '//', split_args=False, evaluate_modifier=False)
-    async def comment(self, *_) -> str:
+    def comment(self, *_) -> str:
         return ''
 
     # TODO: {math: 1 + 1}
@@ -683,6 +729,17 @@ class RandomTransformer(Transformer[Any]):
 
 class _SupportsUser(Protocol):
     user: discord.Member
+    guild: discord.Guild
+
+
+class _SupportsChannel(Protocol):
+    channel: discord.TextChannel
+    guild: discord.Guild
+
+
+class _SupportsMessage(Protocol):
+    message: discord.Message
+    channel: discord.TextChannel
     guild: discord.Guild
 
 
@@ -1006,25 +1063,36 @@ class ViewTransformer(Transformer[Any]):
 
 
 class VariableTransformer(Transformer[Any]):
+    ARG_EXTRACT_REGEX: ClassVar[re.Pattern[str]] = re.compile(r'(?<!\\)%(\d{1,2})')
+
     @transform('declare', '=', 'var', 'variable', 'set', split_args=False)
     async def declare(self, env: Environment[Any], modifier: str, arg: str) -> None:
         """Sets a variable to the given value."""
         if not modifier:
             raise ValueError('name of this variable is required as a modifier')
 
-        # TODO: support arguments e.g. {=(hello):Hello $1!} -> {hello:World} -> Hello World!
-
         name = modifier.casefold().strip()
 
-        if self.get_transformer_callback(name) is not None:
-            raise ValueError(f'variable/tag {name!r} already exists')
+        if self.get_transformer_callback(name) is None:
+            @transform(name, evaluate_modifier=False)
+            async def callback(_, c_env: Environment[Any], _modifier: str, *c_args: str) -> str | None:
+                content = c_env.vars[name]
 
-        @transform(name, evaluate_modifier=False)
-        async def callback(_, c_env: Environment[Any], _modifier: str, *_c_args: str) -> None:
-            return c_env.vars[name]
+                if '%' not in content:
+                    return content
 
-        self.transformers.append(callback)
-        callback.transformer = self
+                def repl(match: re.Match[str]) -> str:
+                    idx = match.group(1)
+                    try:
+                        return c_args[int(idx) - 1]
+                    except IndexError:
+                        return '%' + idx
+
+                return self.ARG_EXTRACT_REGEX.sub(repl, content)
+
+            self.transformers.append(callback)
+            callback.transformer = self
+            callback.var_transformer = True
 
         env.vars[name] = arg
 
