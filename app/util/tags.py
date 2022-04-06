@@ -16,7 +16,7 @@ from typing import (
     NamedTuple,
     ParamSpec,
     Protocol,
-    SupportsFloat, Type,
+    Type,
     TypeVar,
     TYPE_CHECKING,
 )
@@ -51,6 +51,7 @@ __all__ = (
     'VariableTransformer',
     'create_transformer_registry',
     'execute_tags',
+    'execute_python_tag',
 )
 
 P = ParamSpec('P')
@@ -1161,3 +1162,85 @@ async def execute_tags(
         return
 
     await channel.send(**kwargs)
+
+
+def _transform_template() -> str:
+    with open('./assets/pytag_prepend.py', 'r') as fp:
+        out = fp.read()
+
+    out = out.replace('{',  '{{').replace('}', '}}')
+    out = re.sub(r'''_INTERNAL_FMTARG\((['"])(.+?)\1\)''', r'{\2}', out)
+
+    return out
+
+
+_PYTAG_TEMPLATE: str = _transform_template()
+_CODE_EVALUATION_ENDPOINT: Final[str] = 'https://eval.lambdabot.cf/eval'
+_EXTRATION_REGEX: Final[re.Pattern[str]] = re.compile(r'\x0e\x00:\x01(.+)\x01\x02\r?\n')
+
+
+async def execute_python_tag(
+    *,
+    bot: Bot,
+    message: discord.Message,
+    channel: discord.TextChannel | int,
+    code: str,
+    target: discord.Member | None = None,
+    **send_kwargs: Any,
+) -> None:
+    """Executes a Python code tag."""
+    code = _PYTAG_TEMPLATE.format(
+        user=message.author,
+        guild=message.guild,
+        guild_icon=message.guild.icon and message.guild.icon.key,
+        target=target or message.author,
+    ) + code
+
+    async with bot.session.post(_CODE_EVALUATION_ENDPOINT, json={'input': code}) as response:
+        response.raise_for_status()
+        data = await response.json()
+
+    return_code = data['returncode']
+    output = data['stdout']
+
+    if return_code != 0:
+        output = f'A runtime error occured during execution: ```py\n{output}```'
+        if not isinstance(channel, int):
+            channel = channel.id
+
+        params = handle_message_parameters(content=output)
+        await bot.http.send_message(channel, params=params)
+        return
+
+    if not output:
+        return
+
+    stdout = []
+    parts = _EXTRATION_REGEX.split(output)
+    channel_id = channel if isinstance(channel, int) else channel.id
+    count = 0
+
+    for i, part in enumerate(parts):
+        if not i % 2:
+            stdout.append(part)
+            continue
+
+        payload = json.loads(part)
+        op = payload['op']
+
+        if op == 'respond':
+            if count >= 5:
+                continue
+
+            data = payload['d']
+
+            if embeds := data.get('embeds'):
+                data['embeds'] = [discord.Embed.from_dict(embed) for embed in embeds]
+            else:
+                data['embeds'] = []
+
+            params = handle_message_parameters(**send_kwargs, **data)
+            await bot.http.send_message(channel_id, params=params)
+
+            count += 1
+            continue

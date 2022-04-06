@@ -39,7 +39,7 @@ class IntervalConverter(Converter[timedelta]):
     }
 
     @classmethod
-    def _convert(cls, argument: str) -> tuple[timedelta, re.Match]:
+    def _convert(cls, argument: str) -> tuple[timedelta, re.Match[str]]:
         """Convert the argument to a timedelta."""
         match = RELATIVE_TIME_REGEX.search(argument)
         if match is None:
