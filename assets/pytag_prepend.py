@@ -56,16 +56,33 @@ class model:
         def __init__(self, id, name, icon_hash, owner, member_count):
             self.id = id
             self.name = name
-            self.icon = icon_hash and model.Asset(f'/icons/{id}/{icon_hash}', animated=icon_hash.startswith('a_'))
+            self.icon = icon_hash and model.Asset(f'icons/{id}/{icon_hash}', animated=icon_hash.startswith('a_'))
             self.owner = owner
             self.member_count = member_count
+
+        def __repr__(self):
+            return f'<Guild id={self.id} name={self.name!r} owner={self.owner!r}>'
+
+    class Channel(_INTERNAL_BaseDiscordModel):
+        def __init__(self, id, name, topic, slowmode, position, nsfw):
+            self.id = id
+            self.name = name
+            self.topic = topic
+            self.slowmode = slowmode
+            self.position = position
+            self.nsfw = nsfw
+
+        def __repr__(self):
+            return f'<Channel id={self.id} name={self.name!r} nsfw={self.nsfw}>'
+
+        def mention(self): return f'<#{self.id}>'
 
     # noinspection PyShadowingNames
     class User(_INTERNAL_BaseDiscordModel):
         _display_avatar_hash: str
 
         def __init__(self, id, name, discriminator, avatar_hash, nick,
-                     guild, disp_avatar_hash, joined_at):
+                     guild, disp_avatar_hash, joined_at, position, color):
             self.id = id
             self.name = name
             self.discriminator = discriminator
@@ -76,6 +93,8 @@ class model:
             )
             self.nick = nick
             self.joined_at = joined_at
+            self.color = color
+            self.position = position
             self._display_avatar_hash = disp_avatar_hash
             guild and disp_avatar_hash and self._register_guild(guild)
 
@@ -83,9 +102,15 @@ class model:
         def mention(self): return f'<@{self.id}>'
 
         @property
+        def colour(self): return self.color
+
+        @property
         def tag(self): return f'{self.name}#{self.discriminator}'
 
         __str__ = tag.fget  # type: ignore
+
+        def __repr__(self):
+            return f'<User id={self.id} name={self.name!r} discriminator={self.discriminator!r}>'
 
         def _register_guild(self, guild):
             self.display_avatar = model.Asset(
@@ -114,6 +139,55 @@ class EmbedProxy:
 
     def __getattr__(self, attr: str):
         return EmptyEmbed
+
+
+class Button:
+    _PRIMARY = 1
+    _SECONDARY = 2
+    _SUCCESS = 3
+    _DANGER = 4
+    _LINK = 5
+
+    def __init__(self, label, style=1, response=None, url=None):
+        self.label = label
+        self.style = style
+        self.response = response
+        self.url = url
+
+    def __repr__(self):
+        if self.style == self._LINK:
+            return f'<Button label={self.label!r} url={self.url!r}>'
+
+        return f'<Button label={self.label!r} style={self.style}>'
+
+    def to_dict(self):
+        return vars(self)
+
+    @classmethod
+    def link(cls, label, url):
+        return cls(label, cls._LINK, url=url)
+
+    @classmethod
+    def primary(cls, label, response):
+        return cls(label, cls._PRIMARY, response=response)
+
+    @classmethod
+    def secondary(cls, label, response):
+        return cls(label, cls._SECONDARY, response=response)
+
+    @classmethod
+    def success(cls, label, response):
+        return cls(label, cls._SUCCESS, response=response)
+
+    @classmethod
+    def danger(cls, label, response):
+        return cls(label, cls._DANGER, response=response)
+
+    url = link
+    blurple = primary
+    grey = gray = secondary
+    green = success
+    red = danger
 
 
 class Embed:
@@ -236,6 +310,9 @@ class Embed:
 
     @colour.setter
     def colour(self, value):
+        if value is EmptyEmbed:
+            value = 0
+
         if isinstance(value, int):
             self._colour = value
         else:
@@ -401,9 +478,11 @@ class Embed:
         return self
 
     def to_dict(self):
+        attrs = ('_timestamp', '_colour', '_footer', '_image', '_thumbnail', '_video', '_provider', '_author', '_fields')
+
         result = {
             key[1:]: getattr(self, key)
-            for key in self.__slots__
+            for key in attrs
             if key[0] == '_' and hasattr(self, key)
         }
 
@@ -456,9 +535,13 @@ class engine:
             guild=None,  # type: ignore
             disp_avatar_hash=_INTERNAL_FMTARG('guild.owner.display_avatar.key!r'),
             joined_at=_INTERNAL_TRANSFORM_DT("_INTERNAL_FMTARG('guild.owner.joined_at!r')"),
+            color=_INTERNAL_FMTARG('guild.owner.color.value'),
+            position=_INTERNAL_FMTARG('guild.owner.top_role.position'),
         ),
         member_count=_INTERNAL_FMTARG('guild.member_count'),
     )
+
+    server = guild
 
     user = model.User(
         id=_INTERNAL_FMTARG('user.id'),
@@ -469,7 +552,11 @@ class engine:
         guild=guild,
         disp_avatar_hash=_INTERNAL_FMTARG('user.display_avatar.key!r'),
         joined_at=_INTERNAL_TRANSFORM_DT("_INTERNAL_FMTARG('user.joined_at!r')"),
+        color=_INTERNAL_FMTARG('user.color.value'),
+        position=_INTERNAL_FMTARG('user.top_role.position'),
     )
+
+    member = user
 
     target = model.User(
         id=_INTERNAL_FMTARG('target.id'),
@@ -480,17 +567,30 @@ class engine:
         guild=guild,
         disp_avatar_hash=_INTERNAL_FMTARG('target.display_avatar.key!r'),
         joined_at=_INTERNAL_TRANSFORM_DT("_INTERNAL_FMTARG('target.joined_at!r')"),
+        color=_INTERNAL_FMTARG('target.color.value'),
+        position=_INTERNAL_FMTARG('target.top_role.position'),
+    )
+
+    channel = model.Channel(
+        id=_INTERNAL_FMTARG('channel.id'),
+        name=_INTERNAL_FMTARG('channel.name!r'),
+        topic=_INTERNAL_FMTARG('channel.topic!r'),
+        slowmode=_INTERNAL_FMTARG('channel.slowmode_delay'),
+        position=_INTERNAL_FMTARG('channel.position'),
+        nsfw=_INTERNAL_FMTARG('channel.nsfw'),
     )
 
     @staticmethod
-    def respond(content=None, *, embed=None, embeds=None):
+    def respond(content=None, *, embed=None, embeds=None, button=None, buttons=None):
         embeds = [embed] if embed is not None else embeds
+        buttons = [button] if button is not None else buttons
 
         payload = {
             'op': 'respond',
             'd': {
-                'content': content,
+                'content': None if content is None else str(content),
                 'embeds': embeds and [embed.to_dict() if isinstance(embed, Embed) else embed for embed in embeds],
+                'buttons': buttons and [button.to_dict() if isinstance(button, Button) else button for button in buttons][:25],
             },
         }
         print(f'\x0e\x00:\x01{_INTERNAL_json.dumps(payload)}\x01\x02')  # random characters, who knows?
@@ -498,7 +598,9 @@ class engine:
 
 engine.guild.owner._register_guild(engine.guild)
 user = member = engine.user
-guild = engine.guild
+target = engine.target
+guild = server = engine.guild
+channel = engine.channel
 respond = engine.respond
 
 del _INTERNAL_TRANSFORM_DT

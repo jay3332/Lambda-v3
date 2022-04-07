@@ -76,7 +76,14 @@ class CDNClient:
 
         return CDNEntry(filename, directory, directory + filename, self._session)
 
-    async def upload(self, fp: BinaryIO, filename: str = None, *, directory: str = None, raise_on_conflict: bool = False) -> CDNEntry:
+    async def upload(
+        self,
+        fp: BinaryIO,
+        filename: str = None,
+        *,
+        directory: str = None,
+        raise_on_conflict: bool = False,
+    ) -> CDNEntry:
         """Upload a file to the CDN."""
         filename = filename or 'unknown.png'
 
@@ -115,6 +122,10 @@ class CDNClient:
             except ClientResponseError as exc:
                 if exc.status != 409:
                     raise
+
+    async def paste(self, text: str, *, extension: str = 'txt', directory: str = None) -> CDNEntry:
+        """Upload text to the CDN."""
+        return await self.safe_upload(BytesIO(text.encode('utf-8')), extension=extension, directory=directory)
 
     async def delete(self, entry: CDNEntry | str) -> None:
         """Deletes a file from the CDN. Entry can be a :class:`CDNEntry` object or a filename."""

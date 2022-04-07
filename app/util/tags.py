@@ -1176,14 +1176,15 @@ def _transform_template() -> str:
 
 _PYTAG_TEMPLATE: str = _transform_template()
 _CODE_EVALUATION_ENDPOINT: Final[str] = 'https://eval.lambdabot.cf/eval'
-_EXTRATION_REGEX: Final[re.Pattern[str]] = re.compile(r'\x0e\x00:\x01(.+)\x01\x02\r?\n')
+_EXTRACTION_REGEX: Final[re.Pattern[str]] = re.compile(r'\x0e\x00:\x01(.+)\x01\x02\r?\n')
 
 
 async def execute_python_tag(
     *,
     bot: Bot,
     message: discord.Message,
-    channel: discord.TextChannel | int,
+    channel: discord.TextChannel,
+    destination: discord.TextChannel | int = None,
     code: str,
     target: discord.Member | None = None,
     **send_kwargs: Any,
@@ -1191,10 +1192,13 @@ async def execute_python_tag(
     """Executes a Python code tag."""
     code = _PYTAG_TEMPLATE.format(
         user=message.author,
+        channel=channel,
         guild=message.guild,
         guild_icon=message.guild.icon and message.guild.icon.key,
         target=target or message.author,
     ) + code
+
+    channel = destination or channel
 
     async with bot.session.post(_CODE_EVALUATION_ENDPOINT, json={'input': code}) as response:
         response.raise_for_status()
@@ -1204,9 +1208,21 @@ async def execute_python_tag(
     output = data['stdout']
 
     if return_code != 0:
-        output = f'A runtime error occured during execution: ```py\n{output}```'
+        output = _EXTRACTION_REGEX.sub('', output)
+        if not output:
+            output = f'Exited with non-zero return code: {return_code}'
+        elif len(output) > 1900:
+            paste = await bot.cdn.paste(output, extension='py', directory='tag_errors')
+            output = paste.url
+        else:
+            output = f'```py\n{output}\n```'
+
+        output = f'A runtime error occured during execution: {output}'
         if not isinstance(channel, int):
             channel = channel.id
+
+        if return_code == 143:
+            output = 'Execution timed out'
 
         params = handle_message_parameters(content=output)
         await bot.http.send_message(channel, params=params)
@@ -1216,7 +1232,7 @@ async def execute_python_tag(
         return
 
     stdout = []
-    parts = _EXTRATION_REGEX.split(output)
+    parts = _EXTRACTION_REGEX.split(output)
     channel_id = channel if isinstance(channel, int) else channel.id
     count = 0
 
@@ -1233,14 +1249,39 @@ async def execute_python_tag(
                 continue
 
             data = payload['d']
+            data['content'] = cutoff(data['content'] or '', max_length=2000, exact=True) or None
 
             if embeds := data.get('embeds'):
                 data['embeds'] = [discord.Embed.from_dict(embed) for embed in embeds]
             else:
                 data['embeds'] = []
 
+            if buttons := data.pop('buttons', None):
+                data['view'] = view = discord.ui.View(timeout=30)
+
+                for button in buttons:
+                    if button['style'] == 5:
+                        view.add_item(discord.ui.Button(label=button['label'], url=button['url']))
+                        continue
+
+                    view.add_item(
+                        new := discord.ui.Button(label=button['label'], style=discord.ButtonStyle(button['style']))
+                    )
+                    content = button['response']
+
+                    async def callback(interaction: discord.Interaction) -> None:
+                        await interaction.response.send_message(content[:4000], ephemeral=True)
+
+                    new.callback = callback
+
             params = handle_message_parameters(**send_kwargs, **data)
-            await bot.http.send_message(channel_id, params=params)
+            try:
+                response = await bot.http.send_message(channel_id, params=params)
+            except discord.HTTPException:
+                pass
+            else:
+                if 'view' in data:
+                    bot._connection.store_view(data['view'], int(response['id']))
 
             count += 1
             continue
