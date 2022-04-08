@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Awaitable, Callable, Literal, TYPE_CHECKING, overload
+from abc import ABC, abstractmethod
+from typing import Any, Awaitable, Callable, Literal, TYPE_CHECKING, TypeVar, overload
 
 import asyncpg
 
@@ -10,6 +11,8 @@ from .migrations import Migrator
 
 if TYPE_CHECKING:
     from app.util.types import LevelingConfig, LevelingData, RankCard
+
+    RecordT = TypeVar('RecordT', bound='BaseRecord')
 
 __all__ = (
     'Database',
@@ -163,7 +166,41 @@ class Database(_Database):
             return await connection.fetchrow(query, guild_id)
 
 
-class GuildRecord:
+class BaseRecord(ABC):
+    data: dict[str, Any]
+
+    @abstractmethod
+    async def fetch(self: RecordT) -> RecordT:
+        raise NotImplementedError
+
+    async def fetch_if_necessary(self: RecordT) -> RecordT:
+        """Fetches the record if it is not already cached."""
+        if not self.data:
+            await self.fetch()
+
+        return self
+
+    @abstractmethod
+    async def _update(
+        self: RecordT,
+        key: Callable[[tuple[int, str]], str],
+        values: dict[str, Any],
+        *,
+        connection: asyncpg.Connection | None = None,
+    ) -> RecordT:
+        raise NotImplementedError
+
+    def update(self: RecordT, *, connection: asyncpg.Connection | None = None, **values: Any) -> Awaitable[RecordT]:
+        return self._update(lambda o: f'"{o[1]}" = ${o[0]}', values, connection=connection)
+
+    def add(self: RecordT, *, connection: asyncpg.Connection | None = None, **values: Any) -> Awaitable[RecordT]:
+        return self._update(lambda o: f'"{o[1]}" = "{o[1]}" + ${o[0]}', values, connection=connection)
+
+    def append(self: RecordT, *, connection: asyncpg.Connection | None = None, **values: Any) -> Awaitable[RecordT]:
+        return self._update(lambda o: f'"{o[1]}" = ARRAY_APPEND("{o[1]}", ${o[0]})', values, connection=connection)
+
+
+class GuildRecord(BaseRecord):
     """Represents a guild record in the database."""
 
     def __init__(self, guild_id: int, *, db: Database) -> None:
@@ -174,22 +211,17 @@ class GuildRecord:
     async def fetch(self) -> GuildRecord:
         """Fetches the guild record from the database."""
         query = """
-                INSERT INTO guilds (guild_id)
-                VALUES
-                    ($1)
+                INSERT INTO
+                    guilds (guild_id)
+                VALUES ($1)
                 ON CONFLICT (guild_id)
                 DO UPDATE
                     SET guild_id = $1
-                RETURNING *
+                RETURNING
+                    *
                 """
 
         self.data.update(await self.db.fetchrow(query, self.guild_id))
-        return self
-
-    async def fetch_if_necessary(self) -> GuildRecord:
-        """Fetches the guild record from the database if it is not already cached."""
-        if not self.data:
-            await self.fetch()
         return self
 
     async def _update(
@@ -200,8 +232,13 @@ class GuildRecord:
         connection: asyncpg.Connection | None = None,
     ) -> GuildRecord:
         query = """
-                UPDATE guilds SET {} WHERE guild_id = $1
-                RETURNING *;
+                UPDATE
+                    guilds
+                SET {}
+                WHERE
+                    guild_id = $1
+                RETURNING
+                    *
                 """
 
         # noinspection PyTypeChecker
@@ -213,12 +250,6 @@ class GuildRecord:
             ),
         )
         return self
-
-    def update(self, *, connection: asyncpg.Connection | None = None, **values: Any) -> Awaitable[GuildRecord]:
-        return self._update(lambda o: f'"{o[1]}" = ${o[0]}', values, connection=connection)
-
-    def append(self, *, connection: asyncpg.Connection | None = None, **values: Any) -> Awaitable[GuildRecord]:
-        return self._update(lambda o: f'"{o[1]}" = ARRAY_APPEND("{o[1]}", ${o[0]})', values, connection=connection)
 
     @property
     def prefixes(self) -> list[str]:

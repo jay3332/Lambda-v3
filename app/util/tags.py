@@ -97,9 +97,11 @@ class DiscordMetadata(NamedTuple):
 class Environment(Generic[T]):
     """Represents a tag parsing environment."""
 
-    def __init__(self, *, message: discord.Message, bot: Bot) -> None:
+    def __init__(self, *, message: discord.Message, bot: Bot, target: discord.Member, args: list[str]) -> None:
         self.metadata: T = DiscordMetadata(message, bot)
         self.vars: dict[str, Any] = {}
+        self.args: list[str] = args
+        self.target: discord.Member = target
 
         self.embed: discord.Embed | None = None
         self.view: discord.ui.View | None = None
@@ -686,6 +688,54 @@ class MetaTransformer(Transformer[Any]):
     def comment(self, *_) -> str:
         return ''
 
+    @transform('arg', 'getarg', split_args=False)
+    def arg(self, env, modifier: str, arg: str) -> str:
+        modifier = modifier or arg
+
+        if not modifier:
+            raise ValueError('arg requires a modifier (index)')
+
+        try:
+            modifier = int(modifier)
+        except ValueError:
+            raise ValueError('arg requires an integer modifier')
+
+        if modifier <= 0:
+            raise ValueError('arg requires a positive integer modifier')
+
+        try:
+            return env.args[modifier - 1]
+        except IndexError:
+            return ''
+
+    @transform('args')
+    def args(self, env, splitter: str, *args: str) -> str:
+        if len(args) not in (0, 2):
+            raise ValueError('args requires either zero arguments or two arguments (lower and upper bounds)')
+
+        if len(args) == 2:
+            try:
+                lower = int(args[0]) - 1
+                upper = int(args[1])
+            except ValueError:
+                raise ValueError('args requires no arguments or two integer arguments')
+
+            if lower <= 0 or upper <= 0:
+                raise ValueError('args requires no arguments or two positive integer arguments')
+
+            try:
+                entries = env.args[lower:upper]
+            except IndexError:
+                try:
+                    entries = env.args[lower:]
+                except IndexError:
+                    entries = []
+
+        else:
+            entries = env.args
+
+        return (splitter or ';').join(entries)
+
     # TODO: {math: 1 + 1}
 
 
@@ -744,104 +794,114 @@ class _SupportsMessage(Protocol):
     guild: discord.Guild
 
 
-@preinstantiate()
-class UserTransformer(Transformer[Environment[_SupportsUser]]):
-    @staticmethod
-    def _get_user(env: Environment[_SupportsUser], modifier: str) -> discord.Member:
-        if modifier:
-            try:
-                return env.metadata.guild.get_member(int(modifier))
-            except (ValueError, AttributeError):
-                raise ValueError('could not resolve modifier, try removing it instead.')
+def _make_user_transformer(*source_tags: str) -> Type[Transformer[Environment[_SupportsUser]]]:
+    @preinstantiate()
+    class Wrapper(Transformer[Environment[_SupportsUser]]):
+        @staticmethod
+        def _get_user(env: Environment[_SupportsUser], modifier: str) -> discord.Member:
+            if 'target' in source_tags:
+                return env.target
 
-        return env.metadata.user
+            if modifier:
+                try:
+                    return env.metadata.guild.get_member(int(modifier))
+                except (ValueError, AttributeError):
+                    raise ValueError('could not resolve modifier, try removing it instead.')
 
-    @staticmethod
-    def get_asset_details(args: tuple[str, ...]) -> tuple[str | None, int | None]:
-        if not args:
-            return None, None
+            return env.metadata.user
 
-        if len(args) == 1:
-            args = (None, int(args[0])) if args[0].isdigit() else (args[0], 0)
-        if len(args) != 2:
-            raise ValueError('asset details must be in the form of <format> <size>')
+        @staticmethod
+        def get_asset_details(args: tuple[str, ...]) -> tuple[str | None, int | None]:
+            if not args:
+                return None, None
 
-        fmt, size = args
+            if len(args) == 1:
+                args = (None, int(args[0])) if args[0].isdigit() else (args[0], 0)
+            if len(args) != 2:
+                raise ValueError('asset details must be in the form of <format> <size>')
 
-        if not valid_icon_size(size):
-            raise ValueError('avatar size must be a power of 2 between 16 and 4096')
+            fmt, size = args
 
-        return fmt.lower(), size
+            if not valid_icon_size(size):
+                raise ValueError('avatar size must be a power of 2 between 16 and 4096')
 
-    @staticmethod
-    def get_asset_url(asset: discord.Asset, fmt: str, size: int) -> str:
-        if fmt:
-            asset = asset.with_format(fmt)  # type: ignore
-        if size:
-            asset = asset.with_size(size)
+            return fmt.lower(), size
 
-        return asset.url
+        @staticmethod
+        def get_asset_url(asset: discord.Asset, fmt: str, size: int) -> str:
+            if fmt:
+                asset = asset.with_format(fmt)  # type: ignore
+            if size:
+                asset = asset.with_size(size)
 
-    @transform('user', 'member')
-    def user(self, env: Environment[_SupportsUser], modifier: str, *_) -> discord.Member:
-        """Return the author of the current message."""
-        return self._get_user(env, modifier)
+            return asset.url
 
-    @user.transform('name', 'username')
-    def user_name(self, env: Environment[_SupportsUser], modifier: str, *_) -> str:
-        """Return the name of the author of the current message."""
-        return self._get_user(env, modifier).name
+        @transform(*source_tags)
+        def user(self, env: Environment[_SupportsUser], modifier: str, *_) -> discord.Member:
+            """Return the author of the current message."""
+            return self._get_user(env, modifier)
 
-    @user.transform('discriminator', 'discrim')
-    def user_discriminator(self, env: Environment[_SupportsUser], modifier: str, *_) -> str:
-        """Return the discriminator of the author of the current message."""
-        return self._get_user(env, modifier).discriminator
+        @user.transform('name', 'username')
+        def user_name(self, env: Environment[_SupportsUser], modifier: str, *_) -> str:
+            """Return the name of the author of the current message."""
+            return self._get_user(env, modifier).name
 
-    @user.transform('nick', 'nickname', 'display-name', 'display')
-    def user_nick(self, env: Environment[_SupportsUser], modifier: str, *_) -> str:
-        """Return the nickname of the author of the current message."""
-        return self._get_user(env, modifier).nick
+        @user.transform('discriminator', 'discrim')
+        def user_discriminator(self, env: Environment[_SupportsUser], modifier: str, *_) -> str:
+            """Return the discriminator of the author of the current message."""
+            return self._get_user(env, modifier).discriminator
 
-    @user.transform('mention', 'ping')
-    def user_mention(self, env: Environment[_SupportsUser], modifier: str, *_) -> str:
-        """Return a mention of the author of the current message."""
-        return self._get_user(env, modifier).mention
+        @user.transform('nick', 'nickname', 'display-name', 'display')
+        def user_nick(self, env: Environment[_SupportsUser], modifier: str, *_) -> str:
+            """Return the nickname of the author of the current message."""
+            return self._get_user(env, modifier).nick
 
-    @user.transform('tag')
-    def user_tag(self, env: Environment[_SupportsUser], modifier: str, *_) -> discord.Member:
-        """Return the tag of the author of the current message."""
-        return self._get_user(env, modifier)
+        @user.transform('mention', 'ping')
+        def user_mention(self, env: Environment[_SupportsUser], modifier: str, *_) -> str:
+            """Return a mention of the author of the current message."""
+            return self._get_user(env, modifier).mention
 
-    @user.transform('avatar', 'avatar-url', 'pfp', 'icon')
-    def user_avatar(self, env: Environment[_SupportsUser], modifier: str, *args: str) -> str:
-        """Return the avatar URL of the author of the current message."""
-        fmt, size = self.get_asset_details(args)
-        avatar = self._get_user(env, modifier).avatar
+        @user.transform('tag')
+        def user_tag(self, env: Environment[_SupportsUser], modifier: str, *_) -> discord.Member:
+            """Return the tag of the author of the current message."""
+            return self._get_user(env, modifier)
 
-        return self.get_asset_url(avatar, fmt, size)
+        @user.transform('avatar', 'avatar-url', 'pfp', 'icon')
+        def user_avatar(self, env: Environment[_SupportsUser], modifier: str, *args: str) -> str:
+            """Return the avatar URL of the author of the current message."""
+            fmt, size = self.get_asset_details(args)
+            avatar = self._get_user(env, modifier).avatar
 
-    @user.transform('display-avatar', 'display-avatar-url', 'display-pfp', 'display-icon')
-    def user_display_avatar(self, env: Environment[_SupportsUser], modifier: str, *args: str) -> str:
-        """Return the [guild] avatar URL of the author of the current message."""
-        fmt, size = self.get_asset_details(args)
-        avatar = self._get_user(env, modifier).display_avatar
+            return self.get_asset_url(avatar, fmt, size)
 
-        return self.get_asset_url(avatar, fmt, size)
+        @user.transform('display-avatar', 'display-avatar-url', 'display-pfp', 'display-icon')
+        def user_display_avatar(self, env: Environment[_SupportsUser], modifier: str, *args: str) -> str:
+            """Return the [guild] avatar URL of the author of the current message."""
+            fmt, size = self.get_asset_details(args)
+            avatar = self._get_user(env, modifier).display_avatar
 
-    @user.transform('id')
-    def user_id(self, env: Environment[_SupportsUser], modifier: str, *_) -> int:
-        """Return the ID of the author of the current message."""
-        return self._get_user(env, modifier).id
+            return self.get_asset_url(avatar, fmt, size)
 
-    @user.transform('created', 'created-at', 'creation-date')
-    def user_created(self, env: Environment[_SupportsUser], modifier: str, *_) -> datetime.datetime:
-        """Return the creation date of the author of the current message."""
-        return self._get_user(env, modifier).created_at
+        @user.transform('id')
+        def user_id(self, env: Environment[_SupportsUser], modifier: str, *_) -> int:
+            """Return the ID of the author of the current message."""
+            return self._get_user(env, modifier).id
 
-    @user.transform('joined', 'joined-at', 'join-date')
-    def user_joined(self, env: Environment[_SupportsUser], modifier: str, *_) -> datetime.datetime:
-        """Return the join date of the author of the current message."""
-        return self._get_user(env, modifier).joined_at
+        @user.transform('created', 'created-at', 'creation-date')
+        def user_created(self, env: Environment[_SupportsUser], modifier: str, *_) -> datetime.datetime:
+            """Return the creation date of the author of the current message."""
+            return self._get_user(env, modifier).created_at
+
+        @user.transform('joined', 'joined-at', 'join-date')
+        def user_joined(self, env: Environment[_SupportsUser], modifier: str, *_) -> datetime.datetime:
+            """Return the join date of the author of the current message."""
+            return self._get_user(env, modifier).joined_at
+
+    return Wrapper
+
+
+UserTransformer = _make_user_transformer('user', 'member', 'author')
+TargetTransformer = _make_user_transformer('target')
 
 
 @preinstantiate()
@@ -1115,6 +1175,7 @@ def create_transformer_registry(*extra: Transformer[Any]) -> TransformerRegistry
         MetaTransformer,
         RandomTransformer,
         UserTransformer,
+        TargetTransformer,
         LevelingTransformer,
         EmbedTransformer,
         ConditionalTransformer,
@@ -1133,6 +1194,8 @@ async def execute_tags(
     env: Environment[Any] = None,
     transformers: TransformerRegistry[Any] = None,
     silent: bool = False,
+    target: discord.Member | None = None,
+    args: list[str] = None,
     **send_kwargs: Any,
 ) -> None:
     """Executes all tags in the given content."""
@@ -1142,7 +1205,7 @@ async def execute_tags(
     if not content:
         return
 
-    env = env or Environment(message=message, bot=bot)
+    env = env or Environment(message=message, bot=bot, target=target or message.author, args=args or [])
 
     result = await parse(content, env=env, transformers=transformers, silent=silent)
     kwargs = {
@@ -1179,6 +1242,43 @@ _CODE_EVALUATION_ENDPOINT: Final[str] = 'https://eval.lambdabot.cf/eval'
 _EXTRACTION_REGEX: Final[re.Pattern[str]] = re.compile(r'\x0e\x00:\x01(.+)\x01\x02\r?\n')
 
 
+async def _send_message(bot: Bot, channel_id: int, payload: dict[str, Any], send_kwargs: dict[str, Any]) -> None:
+    data = payload['d']
+    data['content'] = cutoff(data['content'] or '', max_length=2000, exact=True) or None
+
+    if embeds := data.get('embeds'):
+        data['embeds'] = [discord.Embed.from_dict(embed) for embed in embeds]
+    else:
+        data['embeds'] = []
+
+    if buttons := data.pop('buttons', None):
+        data['view'] = view = discord.ui.View(timeout=30)
+
+        for button in buttons:
+            if button['style'] == 5:
+                view.add_item(discord.ui.Button(label=button['label'], url=button['url']))
+                continue
+
+            view.add_item(
+                new := discord.ui.Button(label=button['label'], style=discord.ButtonStyle(button['style']))
+            )
+            content = button['response']
+
+            async def callback(interaction: discord.Interaction) -> None:
+                await interaction.response.send_message(content[:4000], ephemeral=True)
+
+            new.callback = callback
+
+    params = handle_message_parameters(**send_kwargs, **data)
+    try:
+        response = await bot.http.send_message(channel_id, params=params)
+    except discord.HTTPException:
+        pass
+    else:
+        if 'view' in data:
+            bot._connection.store_view(data['view'], int(response['id']))
+
+
 async def execute_python_tag(
     *,
     bot: Bot,
@@ -1187,6 +1287,7 @@ async def execute_python_tag(
     destination: discord.TextChannel | int = None,
     code: str,
     target: discord.Member | None = None,
+    args: list[str] = None,
     **send_kwargs: Any,
 ) -> None:
     """Executes a Python code tag."""
@@ -1196,6 +1297,7 @@ async def execute_python_tag(
         guild=message.guild,
         guild_icon=message.guild.icon and message.guild.icon.key,
         target=target or message.author,
+        args=args or [],
     ) + code
 
     channel = destination or channel
@@ -1248,40 +1350,7 @@ async def execute_python_tag(
             if count >= 5:
                 continue
 
-            data = payload['d']
-            data['content'] = cutoff(data['content'] or '', max_length=2000, exact=True) or None
-
-            if embeds := data.get('embeds'):
-                data['embeds'] = [discord.Embed.from_dict(embed) for embed in embeds]
-            else:
-                data['embeds'] = []
-
-            if buttons := data.pop('buttons', None):
-                data['view'] = view = discord.ui.View(timeout=30)
-
-                for button in buttons:
-                    if button['style'] == 5:
-                        view.add_item(discord.ui.Button(label=button['label'], url=button['url']))
-                        continue
-
-                    view.add_item(
-                        new := discord.ui.Button(label=button['label'], style=discord.ButtonStyle(button['style']))
-                    )
-                    content = button['response']
-
-                    async def callback(interaction: discord.Interaction) -> None:
-                        await interaction.response.send_message(content[:4000], ephemeral=True)
-
-                    new.callback = callback
-
-            params = handle_message_parameters(**send_kwargs, **data)
-            try:
-                response = await bot.http.send_message(channel_id, params=params)
-            except discord.HTTPException:
-                pass
-            else:
-                if 'view' in data:
-                    bot._connection.store_view(data['view'], int(response['id']))
+            await _send_message(bot, channel_id, payload, send_kwargs)
 
             count += 1
             continue
