@@ -71,25 +71,35 @@ class PermissionSpec(NamedTuple):
         # weird and hacky solution but it works.
         return permission.replace('_', ' ').title().replace('Tts ', 'TTS ').replace('Guild', 'Server')
 
+    @staticmethod
+    def _is_owner(bot: Bot, user: discord.User) -> bool:
+        if bot.owner_id:
+            return user.id == bot.owner_id
 
-# We don't use @has_permissions/@bot_has_permissions as I may want to implement custom permission checks later on
-def check_permissions(ctx: Context) -> bool:
-    """Checks if the command's author has the required permissions."""
-    permissions = ctx.command._permissions
+        elif bot.owner_ids:
+            return user.id in bot.owner_ids
 
-    other = ctx.channel.permissions_for(ctx.author)
-    missing = [perm for perm, value in other if perm in permissions.user and not value]
+        return False
 
-    if missing and not other.administrator:
-        raise commands.MissingPermissions(missing)
+    # We don't use @has_permissions/@bot_has_permissions as I may want to implement custom permission checks later on
+    def check(self, ctx: Context) -> bool:
+        """Checks if the given context meets the required permissions."""
+        if ctx.bot.bypass_checks and self._is_owner(ctx.bot, ctx.author):
+            return True
 
-    other = ctx.channel.permissions_for(ctx.me)
-    missing = [perm for perm, value in other if perm in permissions.bot and not value]
+        other = ctx.channel.permissions_for(ctx.author)
+        missing = [perm for perm, value in other if perm in self.user and not value]
 
-    if missing and not other.administrator:
-        raise commands.BotMissingPermissions(missing)
+        if missing and not other.administrator:
+            raise commands.MissingPermissions(missing)
 
-    return True
+        other = ctx.channel.permissions_for(ctx.me)
+        missing = [perm for perm, value in other if perm in self.bot and not value]
+
+        if missing and not other.administrator:
+            raise commands.BotMissingPermissions(missing)
+
+        return True
 
 
 @discord.utils.copy_doc(commands.Command)
@@ -105,7 +115,7 @@ class Command(commands.Command):
         self.custom_flags: FlagMeta[Any] | None = None
 
         super().__init__(func, **kwargs)
-        self.add_check(check_permissions)
+        self.add_check(self._permissions.check)
 
     def _ensure_assignment_on_copy(self, other: Command) -> Command:
         super()._ensure_assignment_on_copy(other)
@@ -136,16 +146,17 @@ class Command(commands.Command):
                 else:
                     self.params[name] = param.replace(default=default)
 
-                if first_consume_rest:
-                    target = self.params[first_consume_rest]
-                    default = MISSING if target.default is param.empty else target.default
-                    annotation = None if target.annotation is param.empty else target.annotation
+                if not first_consume_rest:
+                    break
 
-                    self.params[first_consume_rest] = target.replace(
-                        annotation=ConsumeUntilFlag(annotation, default),
-                        kind=param.POSITIONAL_OR_KEYWORD,
-                    )
+                target = self.params[first_consume_rest]
+                default = MISSING if target.default is param.empty else target.default
+                annotation = None if target.annotation is param.empty else target.annotation
 
+                self.params[first_consume_rest] = target.replace(
+                    annotation=ConsumeUntilFlag(annotation, default),
+                    kind=param.POSITIONAL_OR_KEYWORD,
+                )
                 break
 
             elif not first_consume_rest:
@@ -310,13 +321,6 @@ class GroupCommand(commands.Group, Command):
             return result
 
         return decorator
-
-    @discord.utils.copy_doc(commands.Group.add_command)
-    def add_command(self, command: Command, /) -> None:
-        if isinstance(command, Command):
-            command.transform_flag_parameters()
-
-        super().add_command(command)
 
 
 @discord.utils.copy_doc(commands.Context)

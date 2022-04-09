@@ -1219,12 +1219,15 @@ async def execute_tags(
     if env.view is not None:
         kwargs['view'] = env.view
 
-    if isinstance(channel, int):
-        params = handle_message_parameters(**kwargs)
-        await bot.http.send_message(channel, params=params)
-        return
+    try:
+        if isinstance(channel, int):
+            params = handle_message_parameters(**kwargs)
+            await bot.http.send_message(channel, params=params)
+            return
 
-    await channel.send(**kwargs)
+        await channel.send(**kwargs)
+    except discord.HTTPException:
+        pass
 
 
 def _transform_template() -> str:

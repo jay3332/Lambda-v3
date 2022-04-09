@@ -7,6 +7,7 @@ import discord
 from discord.ext import commands
 
 from app.core.models import Command
+from app.features.custom_commands import CustomCommand
 from app.util import AnsiColor, AnsiStringBuilder
 from app.util.common import cutoff, humanize_duration, pluralize
 from app.util.pagination import Paginator, PaginatorView, FieldBasedFormatter
@@ -42,12 +43,12 @@ class CogSelect(discord.ui.Select[PaginatorView]):
 
     @staticmethod
     def get_command_fields(ctx: Context, cog: Cog) -> list[dict[str, str | bool]]:
-        return HelpCommand.commands_into_fields(ctx, cog.get_commands())
+        return HelpCommand.commands_into_fields(ctx, list(cog.walk_commands()))
 
     @staticmethod
     def get_base_cog_embed(ctx: Context, cog: Cog) -> discord.Embed:
         embed = discord.Embed(color=Colors.primary, timestamp=ctx.now)
-        embed.description = f'There are {len(cog.get_commands())} commands in this category.'
+        embed.description = f'There are {sum(not c.hidden for c in cog.walk_commands())} commands in this category. (Nested count)'
         embed.set_author(name=f'Help ({cog.qualified_name}): {ctx.author.name}', icon_url=ctx.author.avatar.url)
         embed.set_footer(text=f'Run `{ctx.clean_prefix}help <command>` to get help on a specific command.')
 
@@ -197,7 +198,7 @@ class HelpCommand(commands.HelpCommand):
             scopes=('bot', 'applications.commands'),
         )
         description = (
-            f'{ctx.bot.description}\n\nI currently have {len(ctx.bot.commands)} commands registered.\n'
+            f'{ctx.bot.description}\n\nI currently have {sum(not c.hidden for c in ctx.bot.commands)} commands registered. (Shallow count)\n'
             f'Use `{ctx.clean_prefix}help <command>` to see more information about a command.\n\n'
             f'[**Invite Lambda**]({url} "{len(ctx.bot.guilds)} guilds") | [**Support Server**]({support_server}) | '
             f'[**Website & Dashboard**]({website})'
@@ -286,7 +287,7 @@ class HelpCommand(commands.HelpCommand):
     async def send_group_help(self, group: GroupCommand) -> None:
         """Send the group's help command."""
         embed = self.get_base_command_embed(group)
-        fields = self.commands_into_fields(self.context, list(group.commands))
+        fields = self.commands_into_fields(self.context, list(group.walk_commands()))
 
         paginator = Paginator(
             self.context,
@@ -301,6 +302,10 @@ class HelpCommand(commands.HelpCommand):
 
     async def send_command_help(self, command: Command) -> None:
         """Send the command's help command."""
+        if isinstance(command, CustomCommand):
+            await self.context.send(self.command_not_found(command.name), reference=self.context.message)
+            return
+
         embed = self.get_base_command_embed(command)
 
         view = UserView(self.context.author)

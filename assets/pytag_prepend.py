@@ -525,7 +525,7 @@ class engine:
     class Error(Exception):
         ...
 
-    args = eval(_INTERNAL_FMTARG('args!r'))  # type: ignore
+    args: list[str] = _INTERNAL_FMTARG('args!r')  # type: ignore
 
     guild = model.Guild(
         id=_INTERNAL_FMTARG('guild.id'),
@@ -585,12 +585,14 @@ class engine:
         nsfw=_INTERNAL_FMTARG('channel.nsfw'),
     )
 
-    def expect_arg_count(self, count: int) -> None:
-        if len(self.args) < count:
+    @classmethod
+    def expect_arg_count(cls, count: int) -> None:
+        if len(cls.args) < count:
             raise TypeError(f'Expected {count} arguments, got {len(self.args)}')
 
-    def arg(self, idx: int, /) -> str:
-        return self.args[idx]
+    @classmethod
+    def arg(cls, idx: int, /) -> str:
+        return cls.args[idx]
 
     @staticmethod
     def respond(content=None, *, embed=None, embeds=None, button=None, buttons=None):

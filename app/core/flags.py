@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Annotated, Any, ClassVar, Collection, Generic, Iterator, TYPE_CHECKING, Type, TypeVar
 
 from discord.ext.commands import BadArgument, Converter, MissingRequiredArgument, run_converters
+from discord.ext.commands.view import StringView
 from discord.utils import MISSING, resolve_annotation
 
 if TYPE_CHECKING:
@@ -262,7 +263,7 @@ class FlagMeta(type, Generic[T]):
         if any(flag.required for flag in cls.flags.values()):
             raise ValueError('cannot set as default')
 
-        kwargs = {v.dest: v.default for v in cls.flags.values()}
+        kwargs = {v.dest: False if v.store_true else v.default for v in cls.flags.values()}
 
         ns = Namespace(**kwargs)
         return FlagNamespace(ns, cls)
@@ -352,6 +353,7 @@ class Flags(metaclass=FlagMeta):  # type: FlagMeta[T]
 
     @classmethod
     async def convert(cls, ctx: Context, argument: str) -> FlagNamespace[T]:
+        # sourcery no-metrics
         try:
             flags: FlagMeta[T] = ctx.command.custom_flags
         except Exception as exc:
@@ -395,7 +397,32 @@ class Flags(metaclass=FlagMeta):  # type: FlagMeta[T]
             converter = flag.converter
             if converter and v is not None:
                 param = ctx.current_parameter.replace(name=_FakeIdentifier(f'{ctx.current_parameter.name}.{k}'))
-                v = await run_converters(ctx, converter, v, param)
+
+                is_list = False
+                try:
+                    origin = converter.__origin__
+                    args = converter.__args__
+                except AttributeError:
+                    pass
+                else:
+                    if origin is list:
+                        is_list = True
+
+                if is_list:
+                    converter = args[0]
+                    view = StringView(v)
+                    v = []
+
+                    while not view.eof:
+                        view.skip_ws()
+
+                        if view.eof:
+                            break
+
+                        word = view.get_quoted_word()
+                        v.append(await run_converters(ctx, converter, word, param))
+                else:
+                    v = await run_converters(ctx, converter, v, param)
 
             elif v is None and flag.required:
                 # we should never actually get here.

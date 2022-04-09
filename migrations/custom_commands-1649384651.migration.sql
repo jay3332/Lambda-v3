@@ -2,6 +2,7 @@ CREATE TABLE custom_commands (
     name TEXT NOT NULL,
     guild_id BIGINT NOT NULL,
     response TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
     is_python BOOLEAN NOT NULL DEFAULT FALSE,
     required_permissions BIGINT NOT NULL DEFAULT 0,
     toggled_users BIGINT[] NOT NULL DEFAULT '{}',

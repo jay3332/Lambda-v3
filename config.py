@@ -115,6 +115,8 @@ class Colors:
 class Emojis:
     """Emojis used by Lambda."""
 
+    plus: str = '<:plus:962150204973395998>'
+
     class Arrows:
         previous: str = '\u25c0'
         forward: str = '\u25b6'

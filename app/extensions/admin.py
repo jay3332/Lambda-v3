@@ -85,6 +85,16 @@ class Admin(Cog):
         """Developer-only commands."""
         await ctx.send_help(ctx.command)
 
+    @developer.command('bypass', aliases={'bp', 'bypass-checks'})
+    async def bypass(self, ctx: Context) -> CommandResponse:
+        """Toggle bypassing checks."""
+        ctx.bot.bypass_checks = new = not ctx.bot.bypass_checks
+
+        if new:
+            return 'You will now be able to bypass checks.', REPLY
+
+        return 'You will no longer be able to bypass checks.', REPLY
+
     @developer.group(aliases={'g', 'github', 'remote'})
     async def git(self, ctx: Context) -> None:
         """Manages requests between the bot it's Git remote."""

@@ -19,7 +19,7 @@ from app.core.cdn import CDNClient
 from app.core.flags import FlagMeta
 from app.core.help import HelpCommand
 from app.core.helpers import GenericCommandError
-from app.core.models import Cog, Command, Context, PermissionSpec
+from app.core.models import Cog, Command, GroupCommand, Context, PermissionSpec
 from app.core.timers import TimerManager
 from app.database import Database
 from app.util import AnsiColor, AnsiStringBuilder
@@ -50,6 +50,7 @@ class Bot(commands.Bot):
     if TYPE_CHECKING:
         from datetime import datetime
 
+        bypass_checks: bool
         cdn: CDNClient
         db: Database
         fonts: FontManager
@@ -161,6 +162,11 @@ class Bot(commands.Bot):
         if isinstance(command, Command):
             command.transform_flag_parameters()
 
+        if isinstance(command, GroupCommand):
+            for child in command.walk_commands():
+                if isinstance(child, Command):
+                    child.transform_flag_parameters()  # type: ignore
+
         super().add_command(command)
 
     def prepare(self) -> None:
@@ -168,6 +174,7 @@ class Bot(commands.Bot):
         self.prepare_jishaku_flags()
         self.prepare_logger()
 
+        self.bypass_checks = False
         self.db = Database(loop=self.loop)
         self.fonts = FontManager()
         self.session = ClientSession()
