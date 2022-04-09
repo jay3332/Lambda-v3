@@ -105,6 +105,7 @@ class Environment(Generic[T]):
 
         self.embed: discord.Embed | None = None
         self.view: discord.ui.View | None = None
+        self.should_reply: bool = True
 
     def get_embed(self) -> discord.Embed:
         if self.embed is None:
@@ -736,6 +737,10 @@ class MetaTransformer(Transformer[Any]):
 
         return (splitter or ';').join(entries)
 
+    @transform('noreply', 'norep', 'nr')
+    def noreply(self, env: Environment[Any]) -> None:
+        env.should_reply = False
+
     # TODO: {math: 1 + 1}
 
 
@@ -1219,13 +1224,15 @@ async def execute_tags(
     if env.view is not None:
         kwargs['view'] = env.view
 
+    reference = discord.MessageReference.from_message(message, fail_if_not_exists=False) if env.should_reply else None
+    kwargs['allowed_mentions'] = bot.allowed_mentions
     try:
         if isinstance(channel, int):
-            params = handle_message_parameters(**kwargs)
+            params = handle_message_parameters(message_reference=reference.to_dict(), **kwargs)
             await bot.http.send_message(channel, params=params)
             return
 
-        await channel.send(**kwargs)
+        await channel.send(reference=reference, **kwargs)
     except discord.HTTPException:
         pass
 
@@ -1245,14 +1252,20 @@ _CODE_EVALUATION_ENDPOINT: Final[str] = 'https://eval.lambdabot.cf/eval'
 _EXTRACTION_REGEX: Final[re.Pattern[str]] = re.compile(r'\x0e\x00:\x01(.+)\x01\x02\r?\n')
 
 
-async def _send_message(bot: Bot, channel_id: int, payload: dict[str, Any], send_kwargs: dict[str, Any]) -> None:
+async def _send_message(
+    bot: Bot, channel_id: int, payload: dict[str, Any], send_kwargs: dict[str, Any], reference: Any,
+) -> None:
     data = payload['d']
     data['content'] = cutoff(data['content'] or '', max_length=2000, exact=True) or None
+    data['allowed_mentions'] = bot.allowed_mentions
 
     if embeds := data.get('embeds'):
         data['embeds'] = [discord.Embed.from_dict(embed) for embed in embeds]
     else:
         data['embeds'] = []
+
+    if data.pop('reply', True):
+        data['message_reference'] = reference
 
     if buttons := data.pop('buttons', None):
         data['view'] = view = discord.ui.View(timeout=30)
@@ -1311,25 +1324,29 @@ async def execute_python_tag(
 
     return_code = data['returncode']
     output = data['stdout']
+    reference = discord.MessageReference.from_message(message, fail_if_not_exists=False).to_dict()
 
     if return_code != 0:
-        output = _EXTRACTION_REGEX.sub('', output)
-        if not output:
+        base_output = _EXTRACTION_REGEX.sub('', output)
+        if not base_output:
             output = f'Exited with non-zero return code: {return_code}'
-        elif len(output) > 1900:
-            paste = await bot.cdn.paste(output, extension='py', directory='tag_errors')
+        elif len(base_output) > 1900:
+            paste = await bot.cdn.paste(base_output, extension='py', directory='tag_errors')
             output = paste.url
         else:
-            output = f'```py\n{output}\n```'
+            output = f'```py\n{base_output}\n```'
 
         output = f'A runtime error occured during execution: {output}'
         if not isinstance(channel, int):
             channel = channel.id
 
-        if return_code == 143:
+        if return_code in (137, 143):
             output = 'Execution timed out'
 
-        params = handle_message_parameters(content=output)
+        elif return_code == 2468:
+            output = base_output
+
+        params = handle_message_parameters(content=output, message_reference=reference)
         await bot.http.send_message(channel, params=params)
         return
 
@@ -1353,7 +1370,7 @@ async def execute_python_tag(
             if count >= 5:
                 continue
 
-            await _send_message(bot, channel_id, payload, send_kwargs)
+            await _send_message(bot, channel_id, payload, send_kwargs, reference=reference)
 
             count += 1
             continue

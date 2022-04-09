@@ -6,11 +6,13 @@ from functools import wraps
 from inspect import iscoroutinefunction
 from typing import Any, Awaitable, Callable, ParamSpec, TYPE_CHECKING, Type, TypeVar
 
+from discord import Embed
 from discord.ext.commands import Converter
 
 from config import Emojis
 
 if TYPE_CHECKING:
+    from discord import Asset
     from app.core import Context
 
     T = TypeVar('T')
@@ -66,6 +68,11 @@ def converter(func: Callable[[Context, str], T]) -> Type[Converter | T]:
             return await func(ctx, argument)
 
     return Wrapper
+
+
+def embed_icon(asset: Asset | None) -> str:
+    """Return the asset's URL if ``asset`` is not None, else return Embed.Empty."""
+    return asset and asset.url or Embed.Empty
 
 
 def ordinal(number: int) -> str:

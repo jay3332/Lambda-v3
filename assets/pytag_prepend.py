@@ -4,6 +4,8 @@ from datetime import datetime as _INTERNAL_dt, timezone as _INTERNAL_dt_tz
 import time as _INTERNAL_time
 # noinspection PyPep8Naming
 import json as _INTERNAL_json
+# noinspection PyPep8Naming
+from sys import exit as _INTERNAL_exit
 
 
 def _INTERNAL_restrict_sleep(*_args, **_kwargs):
@@ -523,7 +525,9 @@ class Embed:
 # noinspection PyPep8Naming
 class engine:
     class Error(Exception):
-        ...
+        def __init__(self, message) -> None:
+            print(message)
+            _INTERNAL_exit(2468)
 
     args: list[str] = _INTERNAL_FMTARG('args!r')  # type: ignore
 
@@ -588,14 +592,15 @@ class engine:
     @classmethod
     def expect_arg_count(cls, count: int) -> None:
         if len(cls.args) < count:
-            raise TypeError(f'Expected {count} arguments, got {len(self.args)}')
+            raise TypeError(f'Expected {count} arguments, got {len(cls.args)}')
 
     @classmethod
     def arg(cls, idx: int, /) -> str:
         return cls.args[idx]
 
+    # noinspection PyShadowingNames
     @staticmethod
-    def respond(content=None, *, embed=None, embeds=None, button=None, buttons=None):
+    def respond(content=None, *, embed=None, embeds=None, button=None, buttons=None, reply=True):
         embeds = [embed] if embed is not None else embeds
         buttons = [button] if button is not None else buttons
 
@@ -605,9 +610,14 @@ class engine:
                 'content': None if content is None else str(content),
                 'embeds': embeds and [embed.to_dict() if isinstance(embed, Embed) else embed for embed in embeds],
                 'buttons': buttons and [button.to_dict() if isinstance(button, Button) else button for button in buttons][:25],
+                'reply': reply,
             },
         }
         print(f'\x0e\x00:\x01{_INTERNAL_json.dumps(payload)}\x01\x02')  # random characters, who knows?
+
+    @staticmethod
+    def exit(msg=''):
+        raise Error(msg)
 
 
 engine.guild.owner._register_guild(engine.guild)
@@ -615,9 +625,12 @@ user = member = engine.user
 target = engine.target
 guild = server = engine.guild
 channel = engine.channel
-respond = engine.respond
+respond = reply = engine.respond
 args = engine.args
 arg = engine.arg
+Error = engine.Error
+# noinspection PyShadowingBuiltins
+exit = error = engine.exit
 
 del _INTERNAL_TRANSFORM_DT
 del _INTERNAL_FMTARG

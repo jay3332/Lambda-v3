@@ -76,7 +76,7 @@ class Miscellaneous(Cog):
     async def dashboard(self, ctx: Context) -> CommandResponse:
         """Link to the dashboard."""
         view = discord.ui.View()
-        view.add_item(discord.ui.Button(label='Go to Dashboard', url=website + '/guild/' + str(ctx.guild.id)))
+        view.add_item(discord.ui.Button(label='Go to Dashboard', url=f'{website}/guild/{ctx.guild.id}'))
         view.add_item(discord.ui.Button(label='Website', url=website))
 
         return 'You can right click on one of the buttons below to copy its link.', view, REPLY
