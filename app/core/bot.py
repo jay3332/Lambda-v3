@@ -186,6 +186,11 @@ class Bot(commands.Bot):
 
         # Run the following in a task so that setup_hook is not blocked
         self.loop.create_task(self._dispatch_first_ready())
+
+        # Only run the web app on Linux (remote server) for now
+        if system() == 'Linux':
+            self._web_run_task = self.loop.create_task(self.web.run_task('0.0.0.0', 8080))
+
         await self._load_extensions()
 
     def prepare_logger(self) -> None:
@@ -398,8 +403,4 @@ class Bot(commands.Bot):
 
     def run(self) -> None:
         """Runs the bot."""
-        if system() == 'Linux':
-            # only run the web app on linux for now
-            self._web_run_task = self.loop.create_task(self.web.run_task('0.0.0.0', 8080))
-
         return super().run(resolved_token)
