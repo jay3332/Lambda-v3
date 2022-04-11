@@ -1,2 +1,2 @@
-def setup(_bot):
+async def setup(_bot):
     pass

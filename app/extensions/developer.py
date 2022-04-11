@@ -10,7 +10,7 @@ class Developer(Cog):
 
     emoji = '\U0001f6e0'
 
-    def __setup__(self) -> None:
+    def cog_load(self) -> None:
         self.docs: DocumentationManager = DocumentationManager(self.bot)
 
     @group(aliases={'doc-search', 'rtfd'})

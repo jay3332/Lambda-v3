@@ -300,7 +300,7 @@ class Reminders(Cog):
         ).format(ctx.clean_prefix)
 
         embed = discord.Embed(color=Colors.primary, description=description, timestamp=ctx.now)
-        embed.set_author(name=f'{ctx.author.name}\'s Reminders', icon_url=ctx.author.avatar.url)
+        embed.set_author(name=f'{ctx.author.name}\'s Reminders', icon_url=ctx.author.avatar)
         embed.set_footer(text=pluralize(f'{len(records)} reminder(s) listed.'))
 
         fields = []

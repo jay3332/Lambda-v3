@@ -168,7 +168,7 @@ class Leveling(Cog):
     if TYPE_CHECKING:
         manager: LevelingManager
 
-    def __setup__(self) -> None:
+    def cog_load(self) -> None:
         self.manager: LevelingManager = LevelingManager(bot=self.bot)
 
     @Cog.listener()

@@ -3,7 +3,7 @@ import re
 import discord
 
 from app.core import BAD_ARGUMENT, Cog, Context, REPLY, group
-from app.util.common import embed_icon, pluralize
+from app.util.common import pluralize
 from app.util.types import CommandResponse
 from config import Colors
 
@@ -28,7 +28,7 @@ class Settings(Cog):
         embed = discord.Embed(color=Colors.primary, timestamp=ctx.now)
         embed.description = '\n'.join(map(discord.utils.escape_mentions, prefixes))
 
-        embed.set_author(name=f'Prefixes for {ctx.guild.name}', icon_url=embed_icon(ctx.guild.icon))
+        embed.set_author(name=f'Prefixes for {ctx.guild.name}', icon_url=ctx.guild.icon)
         embed.set_footer(text=pluralize(f'{len(prefixes)} prefix(es)'))
 
         message = '*I will always respond to mentions.*'

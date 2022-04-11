@@ -89,7 +89,6 @@ class Bot(commands.Bot):
 
         self._BotBase__cogs = commands.core._CaseInsensitiveDict()
         self._web_run_task: asyncio.Task | None = None
-        self.prepare()
 
     async def resolve_command_prefix(self, message: discord.Message) -> list[str]:
         """Resolves a command prefix from a message."""
@@ -107,11 +106,11 @@ class Bot(commands.Bot):
         self.dispatch('first_ready')
 
     # noinspection PyUnresolvedReferences
-    def _load_from_module_spec(self, spec: importlib.machinery.ModuleSpec, key: str) -> None:
+    async def _load_from_module_spec(self, spec: importlib.machinery.ModuleSpec, key: str) -> None:
         # An awfully hacky solution and I really don't like it this way.
         # Maybe I'll come up with a better implementation later.
         try:
-            super()._load_from_module_spec(spec, key)
+            await super()._load_from_module_spec(spec, key)
         except commands.NoEntryPointError:
             lib = importlib.util.module_from_spec(spec)
             sys.modules[key] = lib
@@ -131,13 +130,13 @@ class Bot(commands.Bot):
             return
 
         cog = members[0][1]  # (_cls_name, cog), *_other_cogs
-        cog.simple_setup(self)
+        await cog.simple_setup(self)
 
         self._BotBase__extensions[key] = lib
 
-    def _load_extensions(self) -> None:
+    async def _load_extensions(self) -> None:
         """Loads all command extensions, including Jishaku."""
-        self.load_extension('jishaku')
+        await self.load_extension('jishaku')
 
         for file in os.listdir('./app/extensions'):
             if file == 'compat.py' or file.startswith('_') or not file.endswith('.py'):
@@ -145,17 +144,17 @@ class Bot(commands.Bot):
 
             extension = f'app.extensions.{file[:-3]}'
             try:
-                self.load_extension(extension)
+                await self.load_extension(extension)
             except Exception as exc:
                 self.log.critical(f'Failed to load extension {extension}: {exc}', exc_info=True)
             else:
                 self.log.info(f'Loaded extension: {extension}')
 
-        self.load_extension('app.extensions.compat')  # Load this last
+        await self.load_extension('app.extensions.compat')  # Load this last
 
-    def reload_extension(self, name: str, *, package: str | None = None) -> None:
+    async def reload_extension(self, name: str, *, package: str | None = None) -> None:
         """Reloads an extension."""
-        super().reload_extension(name, package=package)
+        await super().reload_extension(name, package=package)
         self.prepare_jishaku_flags()
 
     def add_command(self, command: Command, /) -> None:
@@ -169,7 +168,7 @@ class Bot(commands.Bot):
 
         super().add_command(command)
 
-    def prepare(self) -> None:
+    async def setup_hook(self) -> None:
         """Prepares the bot for startup."""
         self.prepare_jishaku_flags()
         self.prepare_logger()
@@ -185,8 +184,9 @@ class Bot(commands.Bot):
         web_app.bot = self
         self.web = web_app
 
+        # Run the following in a task so that setup_hook is not blocked
         self.loop.create_task(self._dispatch_first_ready())
-        self._load_extensions()
+        await self._load_extensions()
 
     def prepare_logger(self) -> None:
         """Configures the bot's logger instance."""

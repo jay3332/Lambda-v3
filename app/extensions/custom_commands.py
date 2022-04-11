@@ -8,7 +8,7 @@ from jishaku.codeblocks import codeblock_converter
 from app.core import BAD_ARGUMENT, Cog, Context, ERROR, Flags, PermissionSpec, REPLY, flag, group, store_true
 from app.features.custom_commands import CustomCommandManager, CustomCommandRecord
 from app.util import converter
-from app.util.common import cutoff, embed_icon, pluralize
+from app.util.common import cutoff, pluralize
 from app.util.pagination import FieldBasedFormatter, Paginator
 from app.util.structures import TimestampFormatter
 from app.util.types import CommandResponse
@@ -127,7 +127,7 @@ class CustomCommands(Cog, name='Custom Commands'):
 
     emoji = '\U0001f680'
 
-    def __setup__(self) -> None:
+    def cog_load(self) -> None:
         self.manager: CustomCommandManager = CustomCommandManager(self.bot)
 
     @group('custom-commands', aliases=('custom-command', 'cc', 'ccmd', 'ccmds'))
@@ -137,7 +137,7 @@ class CustomCommands(Cog, name='Custom Commands'):
         Run this command without subcommands to view all current custom commands.
         """
         embed = discord.Embed(color=Colors.primary, timestamp=ctx.now)
-        embed.set_author(name=f'Custom Commands for {ctx.guild.name}', icon_url=embed_icon(ctx.guild.icon))
+        embed.set_author(name=f'Custom Commands for {ctx.guild.name}', icon_url=ctx.guild.icon)
         try:
             show_button = self.make_custom_command._permissions.check(ctx)  # type: ignore
         except MissingPermissions:

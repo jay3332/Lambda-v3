@@ -988,9 +988,8 @@ class EmbedTransformer(Transformer[Environment[Any]]):
 
         icon = env.embed and env.embed.author.icon_url
         url = env.embed and env.embed.author.url
-        empty = discord.Embed.Empty
 
-        env.get_embed().set_author(name=arg, url=url or empty, icon_url=icon or empty)
+        env.get_embed().set_author(name=arg, url=url, icon_url=icon)
 
     @embed_author.transform('icon', 'icon-url', split_args=False)
     async def embed_author_icon(self, env: Environment[Any], _, arg: str) -> None:
@@ -1000,11 +999,10 @@ class EmbedTransformer(Transformer[Environment[Any]]):
 
         name = env.embed and env.embed.author.name
         url = env.embed and env.embed.author.url
-        empty = discord.Embed.Empty
 
         env.get_embed().set_author(
             name=name or '{error: Missing author name}',
-            url=url or empty,
+            url=url,
             icon_url=arg.strip('< >'),
         )
 
@@ -1016,12 +1014,11 @@ class EmbedTransformer(Transformer[Environment[Any]]):
 
         name = env.embed and env.embed.author.name
         icon = env.embed and env.embed.author.icon_url
-        empty = discord.Embed.Empty
 
         env.get_embed().set_author(
             name=name or '{error: Missing author name}',
             url=arg.strip('< >'),
-            icon_url=icon or empty,
+            icon_url=icon,
         )
 
     @embed.transform('thumbnail', 'thumb', split_args=False)
@@ -1046,7 +1043,7 @@ class EmbedTransformer(Transformer[Environment[Any]]):
         if not arg:
             raise ValueError('no footer specified')
 
-        icon_url = env.embed and env.embed.footer.icon_url or discord.Embed.Empty
+        icon_url = env.embed and env.embed.footer.icon_url
 
         env.get_embed().set_footer(text=arg, icon_url=icon_url)
 

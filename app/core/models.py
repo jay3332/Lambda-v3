@@ -3,7 +3,6 @@ from __future__ import annotations
 from functools import wraps
 from typing import (
     Any,
-    Awaitable,
     Callable,
     ClassVar,
     Generic,
@@ -16,7 +15,7 @@ from typing import (
 )
 import discord
 from discord.ext import commands
-from discord.utils import MISSING, cached_property, maybe_coroutine
+from discord.utils import MISSING, cached_property
 
 from app.core.flags import ConsumeUntilFlag, FlagMeta, Flags
 from app.util import AnsiColor, AnsiStringBuilder
@@ -51,14 +50,10 @@ class Cog(commands.Cog):
 
     def __init__(self, bot: Bot) -> None:
         self.bot: Bot = bot
-        bot.loop.create_task(maybe_coroutine(self.__setup__))
-
-    def __setup__(self) -> Awaitable[None] | None:
-        pass
 
     @classmethod
-    def simple_setup(cls, bot: Bot) -> None:
-        bot.add_cog(cls(bot))
+    async def simple_setup(cls, bot: Bot) -> None:
+        await bot.add_cog(cls(bot))
 
 
 class PermissionSpec(NamedTuple):

@@ -27,7 +27,7 @@ class GitPullView(UserView):
             self.reload_modified.disabled = True
 
     @discord.ui.button(label='Reload Modified Files', style=discord.ButtonStyle.primary)
-    async def reload_modified(self, _, interaction: discord.Interaction) -> None:
+    async def reload_modified(self, interaction: discord.Interaction, _) -> None:
         response = AnsiStringBuilder()
 
         async with self.ctx.typing():
@@ -40,10 +40,10 @@ class GitPullView(UserView):
                 if module.startswith('app.extensions'):
                     try:
                         if module in self.bot.extensions:
-                            self.bot.reload_extension(module)
+                            await self.bot.reload_extension(module)
                             color, extra = AnsiColor.green, 'reloaded'
                         else:
-                            self.bot.load_extension(module)
+                            await self.bot.load_extension(module)
                             color, extra = AnsiColor.cyan, 'loaded'
 
                     except Exception as exc:
@@ -66,7 +66,7 @@ class GitPullView(UserView):
         await interaction.response.send_message(response.ensure_codeblock().dynamic(self.ctx))
 
     @discord.ui.button(label='Restart Bot', style=discord.ButtonStyle.danger)
-    async def restart_bot(self, _, interaction: discord.Interaction) -> None:
+    async def restart_bot(self, interaction: discord.Interaction, _) -> None:
         await interaction.response.send_message('Restarting...')
         await self.bot.close()
 

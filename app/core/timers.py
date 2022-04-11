@@ -161,12 +161,17 @@ class TimerManager:
         If no timers expire in at most ``max_days`` days, then ``None`` is returned instead.
         """
         query = """
-                SELECT * FROM timers
-                WHERE expires < (CURRENT_DATE + $1::interval)
-                ORDER BY expires
-                LIMIT 1;
+                SELECT
+                    *
+                FROM
+                    timers
+                WHERE
+                    expires < (CURRENT_DATE + $1::interval)
+                ORDER BY
+                    expires
+                LIMIT
+                    1
                 """
-
         record = await self.db.fetchrow(query, datetime.timedelta(days=max_days))
         return record and Timer.from_record(record, manager=self)
 
@@ -265,9 +270,14 @@ class TimerManager:
             return timer
 
         query = """
-                INSERT INTO timers (event, expires, created_at, metadata)
-                VALUES ($1, $2, $3, $4)
-                RETURNING id;
+                INSERT INTO timers (
+                    event, expires, created_at, metadata
+                )
+                VALUES (
+                    $1, $2, $3, $4
+                )
+                RETURNING
+                    id
                 """
         timer.id = await self.db.fetchval(query, event, when, now, json.dumps(metadata))
 

@@ -49,7 +49,7 @@ class CogSelect(discord.ui.Select[PaginatorView]):
     def get_base_cog_embed(ctx: Context, cog: Cog) -> discord.Embed:
         embed = discord.Embed(color=Colors.primary, timestamp=ctx.now)
         embed.description = f'There are {sum(not c.hidden for c in cog.walk_commands())} commands in this category. (Nested count)'
-        embed.set_author(name=f'Help ({cog.qualified_name}): {ctx.author.name}', icon_url=ctx.author.avatar.url)
+        embed.set_author(name=f'Help ({cog.qualified_name}): {ctx.author.name}', icon_url=ctx.author.avatar)
         embed.set_footer(text=f'Run `{ctx.clean_prefix}help <command>` to get help on a specific command.')
 
         return embed
@@ -88,7 +88,7 @@ class CenterButton(discord.ui.Button[PaginatorView]):
     @staticmethod
     def get_embed(ctx: Context) -> discord.Embed:
         embed = discord.Embed(color=Colors.primary, timestamp=ctx.now)
-        embed.set_author(name=f'Help: {ctx.author.name}', icon_url=ctx.author.avatar.url)
+        embed.set_author(name=f'Help: {ctx.author.name}', icon_url=ctx.author.avatar)
 
         for name, value in (
             ('<argument>', 'This is a required argument.'),
@@ -205,7 +205,7 @@ class HelpCommand(commands.HelpCommand):
         )
 
         embed = discord.Embed(color=Colors.primary, description=description, timestamp=ctx.now)
-        embed.set_author(name=f'Help: {ctx.author.name}', icon_url=ctx.author.avatar.url)
+        embed.set_author(name=f'Help: {ctx.author.name}', icon_url=ctx.author.avatar)
         embed.set_thumbnail(url=ctx.bot.user.avatar.url)
 
         mapping = cls.filter_mapping(mapping)
@@ -251,7 +251,7 @@ class HelpCommand(commands.HelpCommand):
         ctx: Context = self.context
 
         embed = discord.Embed(color=Colors.primary, timestamp=ctx.now)
-        embed.set_author(name=f'Help: {ctx.author.name}', icon_url=ctx.author.avatar.url)
+        embed.set_author(name=f'Help: {ctx.author.name}', icon_url=ctx.author.avatar)
 
         body = command.help or 'No description provided.'
 
