@@ -48,3 +48,12 @@ class ConfirmationView(UserView):
             await interaction.response.defer()
 
         return callback
+
+
+class LinkView(discord.ui.View):
+    def __init__(self, mapping: dict[str, str]) -> None:
+        super().__init__()
+
+        for key, value in mapping.items():
+            button = discord.ui.Button(label=key, url=value)
+            self.add_item(button)

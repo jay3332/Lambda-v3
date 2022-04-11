@@ -5,12 +5,14 @@ import discord.utils as utils
 from discord.ext.commands import BadArgument, MissingPermissions
 from jishaku.codeblocks import codeblock_converter
 
-from app.core import BAD_ARGUMENT, Cog, Context, Flags, REPLY, flag, group, store_true
-from app.features.custom_commands import CustomCommandManager
+from app.core import BAD_ARGUMENT, Cog, Context, ERROR, Flags, PermissionSpec, REPLY, flag, group, store_true
+from app.features.custom_commands import CustomCommandManager, CustomCommandRecord
 from app.util import converter
 from app.util.common import cutoff, embed_icon, pluralize
 from app.util.pagination import FieldBasedFormatter, Paginator
+from app.util.structures import TimestampFormatter
 from app.util.types import CommandResponse
+from app.util.views import LinkView
 from config import Colors, Emojis
 
 
@@ -104,6 +106,20 @@ class CustomCommandCreateFlags(Flags):
         aliases=('blacklisted', 'bl', 'deny', 'disallow', 'forbid'),
     )
     python: bool = store_true(short='y', alias='py')
+
+
+@converter
+async def CustomCommandConverter(ctx: Context[CustomCommands], argument: str) -> CustomCommandRecord:
+    if not ctx.guild:
+        raise BadArgument('This command can only be used in a guild.')
+
+    argument = argument.strip().casefold()
+    record = await ctx.cog.manager.get_record(name=argument, guild=ctx.guild)
+
+    if not record:
+        raise BadArgument(f'custom command {argument!r} not found.')
+
+    return record
 
 
 class CustomCommands(Cog, name='Custom Commands'):
@@ -224,3 +240,144 @@ class CustomCommands(Cog, name='Custom Commands'):
 
         await self.manager.add_command(guild=ctx.guild, **kwargs)
         return f'Successfully created custom command `{name}`.', REPLY
+
+    @custom_commands.command('delete', aliases=('remove', 'rm', 'del', '-'), user_permissions=('manage_guild',))
+    async def delete_custom_command(self, ctx: Context, *names: str) -> CommandResponse:
+        """Delete a custom command, or multiple custom commands.
+
+        Arguments:
+        - `names`: The name, or names of the commands to delete, separated by space.
+        """
+        if not names:
+            return 'Please provide custom commands to delete.', BAD_ARGUMENT
+
+        names = [name.strip().casefold() for name in names]
+        query = """
+                DELETE FROM
+                    custom_commands
+                WHERE
+                    guild_id = $1
+                AND
+                    name = ANY($2)
+                """
+
+        result = await ctx.bot.db.execute(query, ctx.guild.id, names)
+        action, count = result.split(maxsplit=1)
+
+        if action != 'DELETE':
+            return f'Expected DELETE action, got {action!r} instead', ERROR
+
+        try:
+            count = int(count)
+        except ValueError:
+            return f'Expected integer delete count, got {count!r} instead', ERROR
+
+        for name in names:
+            self.manager.remove_command(guild=ctx.guild, name=name)
+
+        if not count:
+            return 'No custom commands were deleted. Make sure the commands were made in this server.', REPLY
+
+        if count < len(names):
+            return f'Successfully deleted {count} out of the {len(names)} specified custom commands.', REPLY
+
+        if count == 1:
+            return f'Successfully deleted the custom command {names[0]!r}.', REPLY
+
+        return f'Successfully deleted {count} custom commands.', REPLY
+
+    @custom_commands.command(
+        name='edit',
+        aliases=('edit-response', 'modify', 'change', 'update', 'e', '~'),
+        user_permissions=('manage_guild',),
+    )
+    async def edit_custom_command(self, _ctx: Context, command: CustomCommandConverter, *, response: str) -> CommandResponse:
+        """Edit a custom command's response.
+
+        If you want to switch between standard and Python-based responses,
+        remove the command (see `{PREFIX}cc remove`) and add it again.
+
+        This inconvenience was deliberately made due to the fact that the contents of the two responses
+        are completely incompatible with each other, so it's best to force a rewrite of the response every time.
+
+        To modify required permissions and/or whitelisted/blacklisted users, roles, or channels, see the following commands:
+        - `{PREFIX}cc <entity> add`
+        - `{PREFIX}cc <entity> remove`
+        - `{PREFIX}cc <entity> reset`
+
+        Replace `<entity>` with `permissions`, `users`, `roles`, or `channels`.
+        To switch between a whitelist or a blacklist, see `{PREFIX}cc toggle-type`.
+
+        Arguments:
+        - `command`: The name of the custom command to edit.
+        - `response`: The new response of the custom command.
+        """
+        await command.update(response=response)
+        return f'Successfully modified custom command {command.name!r}.', REPLY  # TODO: edit diff history
+
+    @custom_commands.command(name='info', aliases=('i', 'view', 'v', 'information', 'details'))
+    async def custom_command_info(self, ctx: Context, command: CustomCommandConverter) -> CommandResponse:
+        """View information about a custom command.
+
+        Arguments:
+        - `command`: The name of the custom command to view.
+        """
+        command: CustomCommandRecord
+        embed = discord.Embed(title=command.name, color=Colors.primary, timestamp=ctx.now)
+        embed.description = f'You are {"un" * (not command.can_run(ctx))}able to run this command.'
+
+        created_at = TimestampFormatter(command.created_at)
+        embed.add_field(name='Created', value=f'{created_at} ({created_at:R})')
+
+        if perms := command.required_permissions.user:
+            embed.add_field(
+                name='Required Permissions',
+                value=', '.join(map(PermissionSpec.permission_as_str, perms)),
+                inline=False,
+            )
+
+        prefix = 'Whitelisted' if command.is_whitelist_toggle else 'Blacklisted'
+        if ids := command.toggled_user_ids:
+            embed.add_field(name=prefix + ' Users', value=', '.join(f'<@{id}>' for id in ids), inline=False)
+
+        if ids := command.toggled_role_ids:
+            embed.add_field(name=prefix + ' Roles', value=', '.join(f'<@&{id}>' for id in ids), inline=False)
+
+        if ids := command.toggled_channel_ids:
+            embed.add_field(name=prefix + ' Channels', value=', '.join(f'<#{id}>' for id in ids), inline=False)
+
+        response = (
+            '*Python-based response*\n'
+            f'See `{ctx.clean_prefix}cc source {command.name}` for the source code of this command.'
+            if command.is_python
+            else cutoff(command.response_content, 1000)
+        )
+        embed.add_field(name='Response', value=response, inline=False)
+
+        return embed, REPLY
+
+    @custom_commands.command(name='raw', aliases=('source', 's', 'src', 'response'))
+    async def custom_command_raw(self, ctx: Context, command: CustomCommandConverter) -> CommandResponse:
+        """View the raw response of a custom command.
+
+        Arguments:
+        - `command`: The name of the custom command to view.
+        """
+        command: CustomCommandRecord
+        if command.is_python:
+            candidate = f'```py\n{command.response_content}```'
+        else:
+            candidate = utils.escape_markdown(command.response_content)
+
+        if len(candidate) > 2000:
+            paste = await ctx.bot.cdn.paste(
+                command.response_content,
+                extension='py' if command.is_python else 'txt',
+                directory='custom_command_source',
+            )
+
+            return 'Click below to view the raw response.', LinkView({'View Response': paste.url}), REPLY
+
+        return candidate, REPLY
+
+    # TODO: make (scroll above), permissions/users/roles/channels add, remove, reset, and toggle-type

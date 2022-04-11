@@ -23,7 +23,7 @@ class Utility(Cog):
 
         Examples:
         - `{PREFIX}test Hello there, {user.mention}!`
-        - `{PREFIX}test The second argument is {args(2)} --args first second`
+        - `{PREFIX}test The second argument is {arg(2)} --args first second`
         - `{PREFIX}test The target is {target.mention} --target @User`
 
         Arguments:

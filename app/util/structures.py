@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import datetime
 from time import perf_counter
-from typing import Generic, TypeVar, TYPE_CHECKING
+from typing import Generic, Literal, TypeVar, TYPE_CHECKING
+
+from discord import utils
 
 if TYPE_CHECKING:
     TimerT = TypeVar('TimerT', bound='Timer')
@@ -59,3 +62,13 @@ class TemporaryAttribute(Generic[T, V]):
 
     def __exit__(self, _type, _val, _tb) -> None:
         delattr(self.obj, self.attr)
+
+
+class TimestampFormatter:
+    __slots__ = ('dt',)
+
+    def __init__(self, dt: datetime.datetime) -> None:
+        self.dt: datetime.datetime = dt
+
+    def __format__(self, format_spec: utils.TimestampStyle | Literal['']) -> str:
+        return utils.format_dt(self.dt, format_spec or None)

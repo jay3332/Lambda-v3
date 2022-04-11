@@ -166,6 +166,30 @@ class CustomCommandRecord(BaseRecord):
     def is_whitelist_toggle(self) -> bool:
         return self.data['is_whitelist_toggle']
 
+    def can_run(self, ctx: Context) -> bool:
+        if not self.required_permissions.check(ctx):
+            return False
+
+        if self.is_whitelist_toggle and ctx.author.id not in self.toggled_user_ids:
+            return False
+
+        elif ctx.author.id in self.toggled_user_ids:
+            return False
+
+        if self.is_whitelist_toggle and ctx.channel.id not in self.toggled_channel_ids:
+            return False
+
+        elif ctx.channel.id in self.toggled_channel_ids:
+            return False
+
+        if self.is_whitelist_toggle and all(role.id not in self.toggled_role_ids for role in ctx.author.roles):
+            return False
+
+        elif any(role.id in self.toggled_role_ids for role in ctx.author.roles):
+            return False
+
+        return True
+
 
 class CustomCommandManager:
     """Manages and registers custom commands."""
@@ -243,6 +267,13 @@ class CustomCommandManager:
             r.data = data
 
         return records
+
+    async def get_record(self, *, name: str, guild: Snowflake) -> CustomCommandRecord | None:
+        """Fetches the record of a command if necessary, returning ``None`` if it doesn't exist."""
+        try:
+            return await self.fetch_record(name=name, guild=guild)
+        except ValueError:
+            return None
 
     def fetch_record(self, *, name: str, guild: Snowflake) -> Awaitable[CustomCommandRecord]:
         """Fetches the record of a command if necessary."""
@@ -325,6 +356,14 @@ class CustomCommandManager:
         self.register_command(name)
         return record
 
+    def remove_command(self, *, name: str, guild: Snowflake, silent: bool = True) -> None:
+        """Removes a command from the cache ONLY."""
+        try:
+            del self._records[guild.id][name]
+        except KeyError:
+            if not silent:
+                raise KeyError(f'command {name!r} does not exist.')
+
 
 def _sig(_ctx, *_args: MemberAndStrConverter):
     ...
@@ -347,7 +386,7 @@ class CustomCommand(Command):
 
         self.params = get_signature_parameters(_sig, globalns)
 
-    async def get_record(self, guild: Snowflake) -> CustomCommandRecord| None:
+    async def get_record(self, guild: Snowflake) -> CustomCommandRecord | None:
         """Gets the response of the command."""
         return await self.manager.fetch_record(name=self.name, guild=guild)
 
@@ -361,25 +400,7 @@ class CustomCommand(Command):
         except ValueError:
             return
 
-        if not record.required_permissions.check(ctx):
-            return
-
-        if record.is_whitelist_toggle and ctx.author.id not in record.toggled_user_ids:
-            return
-
-        elif ctx.author.id in record.toggled_user_ids:
-            return
-
-        if record.is_whitelist_toggle and ctx.channel.id not in record.toggled_channel_ids:
-            return
-
-        elif ctx.channel.id in record.toggled_channel_ids:
-            return
-
-        if record.is_whitelist_toggle and all(role.id not in record.toggled_role_ids for role in ctx.author.roles):
-            return
-
-        elif any(role.id in record.toggled_role_ids for role in ctx.author.roles):
+        if not record.can_run(ctx):
             return
 
         await record.response.execute(ctx, *args)

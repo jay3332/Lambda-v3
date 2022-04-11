@@ -1,10 +1,19 @@
 from __future__ import annotations
 
-import inspect
 from functools import wraps
-from traceback import print_stack
-from typing import Any, Awaitable, Callable, ClassVar, Literal, NamedTuple, ParamSpec, TYPE_CHECKING, Union
-
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    ClassVar,
+    Generic,
+    Literal,
+    NamedTuple,
+    ParamSpec,
+    TYPE_CHECKING,
+    TypeVar,
+    Union,
+)
 import discord
 from discord.ext import commands
 from discord.utils import MISSING, cached_property, maybe_coroutine
@@ -23,6 +32,8 @@ if TYPE_CHECKING:
     from app.util.views import AnyUser
 
     P = ParamSpec('P')
+
+CogT = TypeVar('CogT', bound='Cog')
 
 __all__ = (
     'Cog',
@@ -324,8 +335,9 @@ class GroupCommand(commands.Group, Command):
 
 
 @discord.utils.copy_doc(commands.Context)
-class Context(TypedContext):
+class Context(TypedContext, Generic[CogT]):
     bot: Bot
+    cog: CogT
     command: Command | GroupCommand
 
     def __init__(self, **attrs) -> None:
