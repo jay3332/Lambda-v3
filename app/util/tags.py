@@ -1329,7 +1329,7 @@ async def execute_python_tag(
             output = f'Exited with non-zero return code: {return_code}'
         elif len(base_output) > 1900:
             paste = await bot.cdn.paste(base_output, extension='py', directory='tag_errors')
-            output = paste.url
+            output = paste.paste_url
         else:
             output = f'```py\n{base_output}\n```'
 

@@ -35,6 +35,10 @@ class CDNEntry(NamedTuple):
     def url(self) -> str:
         return BASE_URL + '/uploads' + self.path
 
+    @property
+    def paste_url(self) -> str:
+        return BASE_URL + '/pastes' + self.path
+
     def __str__(self) -> str:
         return self.url
 
@@ -97,7 +101,7 @@ class CDNClient:
         if raise_on_conflict:
             params['safe'] = 'true'
 
-        async with self._session.post('https://cdn.lambdabot.cf/upload', data=form, headers=HEADERS, params=params) as resp:
+        async with self._session.post(BASE_URL + '/upload', data=form, headers=HEADERS, params=params) as resp:
             resp.raise_for_status()
             data = await resp.json()
 

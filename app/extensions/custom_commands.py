@@ -376,7 +376,7 @@ class CustomCommands(Cog, name='Custom Commands'):
                 directory='custom_command_source',
             )
 
-            return 'Click below to view the raw response.', LinkView({'View Response': paste.url}), REPLY
+            return 'Click below to view the raw response.', LinkView({'View Response': paste.paste_url}), REPLY
 
         return candidate, REPLY
 
