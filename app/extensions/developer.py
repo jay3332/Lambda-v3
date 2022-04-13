@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import discord
+from discord.app_commands import Choice, autocomplete, describe
+
 from app.core import BAD_ARGUMENT, Cog, Context, REPLY, command, group
 from app.features.docs import DocumentationManager, DocumentationSource
 from app.util.types import CommandResponse
@@ -32,7 +35,18 @@ class Developer(Cog):
         """View a list of available documentation sources."""
         return '`' + '` `'.join(source.key for source in self.docs.SOURCES.values()) + '`', REPLY
 
-    @command(aliases={'doc', 'documentation'})
+    async def docs_source_autocomplete(self, _interaction: discord.Interaction, current: str) -> list[Choice]:
+        current = current.casefold()
+
+        return [
+            Choice(name=source.name, value=source.key)
+            for source in self.docs.SOURCES.values()
+            if source.key.startswith(current) or source.name.casefold().startswith(current)
+        ]
+
+    @command(aliases={'doc', 'documentation'}, hybrid=True)
+    @describe(source='The name of the documentation to use. Defaults to discord.py', node='The documentation node.')
+    @autocomplete(source=docs_source_autocomplete)
     async def docs(self, ctx: Context, source: DocumentationSource | None = None, *, node: str) -> CommandResponse | None:
         """View rich documentation for a specific node.
 

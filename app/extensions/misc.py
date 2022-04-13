@@ -24,7 +24,7 @@ class Miscellaneous(Cog):
 
         return AnsiColor.yellow
 
-    @command(aliases={'pong', 'latency'})
+    @command(aliases={'pong', 'latency'}, hybrid=True)
     @cooldown(rate=2, per=3)
     async def ping(self, ctx: Context) -> CommandResponse:
         """Pong! Sends detailed information about the bot's latency."""
@@ -56,7 +56,7 @@ class Miscellaneous(Cog):
 
         return result, REPLY
 
-    @command(aliases={'inv', 'i', 'link', 'addbot'})
+    @command(aliases={'inv', 'i', 'link', 'addbot'}, hybrid=True)
     @cooldown(rate=2, per=3)
     async def invite(self, ctx: Context) -> CommandResponse:
         """Invite me to your server!"""
@@ -72,7 +72,7 @@ class Miscellaneous(Cog):
         })
         return 'You can right click on one of the buttons below to copy its link.', view, REPLY
 
-    @command(aliases={'dash', 'dboard', 'website'})
+    @command(aliases={'dash', 'dboard', 'website'}, hybrid=True)
     @cooldown(rate=2, per=3)
     async def dashboard(self, ctx: Context) -> CommandResponse:
         """Link to the dashboard."""

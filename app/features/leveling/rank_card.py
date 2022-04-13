@@ -63,26 +63,26 @@ class BaseRankCard:
     @overload
     @classmethod
     def manual(
-            cls: Type[BaseRankCard],
-            *,
-            user: Member | User,
-            bot: Bot,
-            font: Font = ...,
-            primary_color: RGBColor = ...,  # these should actually be ints
-            secondary_color: RGBColor = ...,
-            tertiary_color: RGBColor = ...,
-            background_url: str | None = ...,
-            background_color: RGBColor = ...,
-            background_image_alpha: float = ...,
-            background_blur: int = ...,
-            overlay_color: RGBColor = ...,
-            overlay_alpha: float = ...,
-            overlay_border_radius: int = ...,
-            avatar_border_color: RGBColor = ...,
-            avatar_border_alpha: float = ...,
-            avatar_border_radius: int = ...,
-            progress_bar_color: RGBColor = ...,
-            progress_bar_alpha: float = ...,
+        cls: Type[BaseRankCard],
+        *,
+        user: Member | User,
+        bot: Bot,
+        font: Font = ...,
+        primary_color: RGBColor = ...,  # these should actually be ints
+        secondary_color: RGBColor = ...,
+        tertiary_color: RGBColor = ...,
+        background_url: str | None = ...,
+        background_color: RGBColor = ...,
+        background_image_alpha: float = ...,
+        background_blur: int = ...,
+        overlay_color: RGBColor = ...,
+        overlay_alpha: float = ...,
+        overlay_border_radius: int = ...,
+        avatar_border_color: RGBColor = ...,
+        avatar_border_alpha: float = ...,
+        avatar_border_radius: int = ...,
+        progress_bar_color: RGBColor = ...,
+        progress_bar_alpha: float = ...,
     ) -> BaseRankCard:
         ...
 

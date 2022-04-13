@@ -72,7 +72,7 @@ class CogSelect(discord.ui.Select[PaginatorView]):
                 row=1,
             )
 
-        await paginator.start(edit=True, interaction=interaction)
+        await paginator.start(edit=True)
 
 
 class CenterButton(discord.ui.Button[PaginatorView]):
@@ -230,7 +230,7 @@ class HelpCommand(commands.HelpCommand):
     async def send_bot_help(self, mapping: dict[Cog | None, list[Command]]) -> None:
         """Send the bot's help command."""
         paginator = self.get_bot_help_paginator(self.context, mapping)
-        await paginator.start(interaction=self.context.interaction if self.context.is_interaction else None)
+        await paginator.start()
 
     async def send_cog_help(self, cog: Cog) -> None:
         """Send the cog's help command."""
@@ -245,7 +245,7 @@ class HelpCommand(commands.HelpCommand):
             row=1,
         )
 
-        await paginator.start(interaction=self.context.interaction if self.context.is_interaction else None)
+        await paginator.start()
 
     def get_base_command_embed(self, command: Command) -> discord.Embed:
         ctx: Context = self.context
@@ -295,10 +295,7 @@ class HelpCommand(commands.HelpCommand):
             center_button=CenterButton(ctx=self.context),
         )
 
-        await paginator.start(
-            interaction=self.context.interaction if self.context.is_interaction else None,
-            reference=self.context.message,
-        )
+        await paginator.start(reference=self.context.message)
 
     async def send_command_help(self, command: Command) -> None:
         """Send the command's help command."""

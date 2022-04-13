@@ -68,6 +68,7 @@ support_server: str = 'https://discord.gg/vuAPY6MQF5'
 website: str = 'https://lambdabot.cf'
 
 owner: Collection[int] | int = 414556245178056706
+test_guild: int = 809972022360539206
 default_prefix: Collection[str] | str = '>'
 allowed_mentions: AllowedMentions = AllowedMentions(everyone=False, users=True, roles=False, replied_user=False)
 

@@ -302,6 +302,11 @@ class Command(commands.Command):
         return super().signature
 
 
+@discord.utils.copy_doc(commands.HybridCommand)
+class HybridCommand(Command, commands.HybridCommand):
+    pass
+
+
 @discord.utils.copy_doc(commands.Group)
 class GroupCommand(commands.Group, Command):
     @discord.utils.copy_doc(commands.Group.command)
@@ -327,6 +332,11 @@ class GroupCommand(commands.Group, Command):
             return result
 
         return decorator
+
+
+@discord.utils.copy_doc(commands.HybridGroup)
+class HybridGroupCommand(GroupCommand, commands.HybridGroup):
+    pass
 
 
 @discord.utils.copy_doc(commands.Context)
@@ -371,10 +381,11 @@ class Context(TypedContext, Generic[CogT]):
         user = self.bot.user
         return self.prefix.replace(f'<@{user.id}>', f'@{user.name}').replace(f'<@!{user.id}>', f'@{user.name}')
 
+    # Kept for backwards compatibility
     @property
     def is_interaction(self) -> bool:
         """Whether an interaction is attached to this context."""
-        return hasattr(self, 'interaction')
+        return self.interaction is not None
 
     async def thumbs(self, message: discord.Message = None) -> None:
         """Reacts to the message with a thumbs-up emoji."""

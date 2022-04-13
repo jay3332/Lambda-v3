@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import inspect
 from functools import wraps
-from typing import Any, AsyncIterable, Awaitable, Callable, Collection, Iterable, ParamSpec, TYPE_CHECKING, TypeAlias, \
-    TypeVar
+from typing import Any, AsyncIterable, Awaitable, Callable, Iterable, ParamSpec, TYPE_CHECKING, TypeAlias, TypeVar
 
 import discord
 from discord.ext import commands
 
 from app.core.flags import FlagMeta
-from app.core.models import Command, GroupCommand
+from app.core.models import Command, GroupCommand, HybridCommand, HybridGroupCommand
 from app.util.ansi import AnsiStringBuilder
 from app.util.common import sentinel
 from app.util.pagination import Paginator
@@ -53,31 +52,6 @@ class Param:
 
 class GenericCommandError(commands.BadArgument):
     pass
-
-
-def clean_interaction_kwargs(kwargs: dict[str, Any]) -> None:
-    kwargs.pop('reference', None)
-
-
-async def _into_interaction_response(interaction: discord.Interaction, kwargs: dict[str, Any]) -> None:
-    clean_interaction_kwargs(kwargs)
-
-    if kwargs.get('embed') and kwargs.get('embeds') is not None:
-        kwargs['embeds'].append(kwargs['embed'])
-        del kwargs['embed']
-
-    if kwargs.pop('edit', False):
-        if interaction.response.is_done():
-            await interaction.edit_original_message(**kwargs)
-        else:
-            await interaction.response.edit_message(**kwargs)
-
-        return
-
-    if interaction.response.is_done():
-        await interaction.followup.send(**kwargs)
-    else:
-        await interaction.response.send_message(**kwargs)
 
 
 async def process_message(ctx: Context, payload: Any) -> discord.Message | None:
@@ -149,14 +123,8 @@ async def process_message(ctx: Context, payload: Any) -> discord.Message | None:
     if bad_argument:
         raise commands.BadArgument(kwargs['content'])
 
-    interaction = getattr(ctx, 'interaction', None)
-
     if paginator:
-        clean_interaction_kwargs(kwargs)
-        return await paginator.start(interaction=interaction, **kwargs)
-
-    if interaction:
-        return await _into_interaction_response(interaction, kwargs)
+        return await paginator.start(**kwargs)
 
     return await ctx.send(**kwargs)
 
@@ -232,12 +200,14 @@ def command(
     brief: str = MISSING,
     help: str = MISSING,
     easy_callback: bool | AsyncCallableDecorator = True,
-    **_other_kwargs: Any,
+    hybrid: bool = False,
+    **other_kwargs: Any,
 ) -> Callable[..., Command]:
     kwargs = _resolve_command_kwargs(
-        Command, name=name, alias=alias, aliases=aliases, brief=brief, help=help, usage=usage,
+        HybridCommand if hybrid else Command,
+        name=name, alias=alias, aliases=aliases, brief=brief, help=help, usage=usage,
     )
-    result = commands.command(**kwargs, **_other_kwargs)
+    result = commands.command(**kwargs, **other_kwargs)
 
     if easy_callback:
         if easy_callback is True:
@@ -262,14 +232,16 @@ def group(
     brief: str = MISSING,
     help: str = MISSING,
     easy_callback: bool = True,
+    hybrid: bool = False,
     iwc: bool = True,
-    **_other_kwargs: Any,
+    **other_kwargs: Any,
 ) -> Callable[..., GroupCommand]:
     kwargs = _resolve_command_kwargs(
-        GroupCommand, name=name, alias=alias, aliases=aliases, brief=brief, help=help, usage=usage,
+        HybridGroupCommand if hybrid else GroupCommand,
+        name=name, alias=alias, aliases=aliases, brief=brief, help=help, usage=usage,
     )
     kwargs['invoke_without_command'] = iwc
-    result = commands.group(**kwargs, **_other_kwargs)
+    result = commands.group(**kwargs, **other_kwargs)
 
     if easy_callback:
         return lambda func: result(easy_command_callback(func))

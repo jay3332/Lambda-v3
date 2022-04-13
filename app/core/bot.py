@@ -8,7 +8,7 @@ import os
 import re
 import sys
 from platform import system
-from typing import Any, ClassVar, Final, TYPE_CHECKING
+from typing import Any, ClassVar, Final, TYPE_CHECKING, Type
 
 import discord
 import jishaku
@@ -25,7 +25,8 @@ from app.database import Database
 from app.util import AnsiColor, AnsiStringBuilder
 from app.util.pillow import FontManager
 from app.web import app as web_app
-from config import allowed_mentions, default_prefix, description, name as bot_name, owner, resolved_token, version
+from config import allowed_mentions, default_prefix, description, name as bot_name, owner, resolved_token, test_guild, \
+    version
 
 if TYPE_CHECKING:
     from quart import Quart
@@ -193,6 +194,9 @@ class Bot(commands.Bot):
 
         await self._load_extensions()
 
+        if test_guild is not None:
+            self.tree.copy_global_to(guild=discord.Object(id=test_guild))
+
     def prepare_logger(self) -> None:
         """Configures the bot's logger instance."""
         self.log.setLevel(logging.INFO)
@@ -238,11 +242,20 @@ class Bot(commands.Bot):
 
         return None
 
+    async def get_context(
+        self,
+        origin: discord.Message | discord.Interaction,
+        /,
+        *,
+        cls: Type[Context] = Context,
+    ) -> Context:
+        return await super().get_context(origin, cls=cls)
+
     async def process_commands(self, message: discord.Message, /) -> None:
         if message.author.bot:
             return
 
-        ctx = await self.get_context(message, cls=Context)
+        ctx = await self.get_context(message)
         await self.invoke(ctx)
 
     async def on_first_ready(self) -> None:
