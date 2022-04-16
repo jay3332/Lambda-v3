@@ -159,10 +159,10 @@ class Developer(Cog):
             builder.append(line)
             builder.newline()
 
-        raw_output_builder.ensure_codeblock(fallback='diff')
-
         if not raw_output_builder.raw_length:
             raw_output_builder.append('No errors found!', color=AnsiColor.green)
+
+        raw_output_builder.ensure_codeblock(fallback='diff')
 
         out = builder.strip().ensure_codeblock(fallback='py').dynamic(ctx)
         if len(builder) + len(raw_output_builder) > 1990:
