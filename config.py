@@ -117,6 +117,7 @@ class Emojis:
     """Emojis used by Lambda."""
 
     plus: str = '<:plus:962150204973395998>'
+    loading: str = '<a:loading:812768154198736898>'
 
     class Arrows:
         previous: str = '\u25c0'

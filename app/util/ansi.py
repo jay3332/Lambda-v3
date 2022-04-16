@@ -224,6 +224,7 @@ class AnsiStringBuilder:
         elif len(self._chunks) == 1:
             chunk = self._chunks[0]
             self._chunks[0] = chunk.with_text(chunk.text.strip())
+            return self
 
         first, *_, last = self._chunks
         self._chunks[0] = first.with_text(first.text.lstrip())
