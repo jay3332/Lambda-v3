@@ -415,6 +415,12 @@ class DocumentationManager:
             name='Requests',
             url='https://docs.python-requests.org/en/master',
         ),
+        'magmatic': DocumentationSource(
+            key='magmatic',
+            name='magmatic',
+            url='https://magmatic.readthedocs.io/en/latest',
+            aliases=('magma',),
+        ),
     }
 
     def __init__(self, bot: Bot) -> None:
