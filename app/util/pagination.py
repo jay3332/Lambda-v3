@@ -86,7 +86,7 @@ class _PageInputModal(Modal, title='Select Page'):
         self.view._update_view()
         embed = await self.paginator.get_page(self.paginator.current_page)
 
-        await interaction.message.edit(embed=embed, view=self.view)
+        await interaction.response.edit_message(embed=embed, view=self.view)
 
 
 class PaginatorView(UserView):
@@ -141,11 +141,12 @@ class PaginatorView(UserView):
     async def _update(self, interaction: Interaction) -> None:
         self._update_view()
         embed = await self.paginator.get_page(self.paginator.current_page)
-        await interaction.message.edit(embed=embed, view=self)
+        await interaction.response.edit_message(embed=embed, view=self)
 
 
 class Paginator:
     """An interface around a message with pages."""
+
     def __init__(
         self,
         ctx: Context,
