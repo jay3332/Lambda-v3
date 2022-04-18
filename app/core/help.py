@@ -72,7 +72,7 @@ class CogSelect(discord.ui.Select[PaginatorView]):
                 row=1,
             )
 
-        await paginator.start(edit=True)
+        await paginator.start(edit=True, interaction=interaction)
 
 
 class CenterButton(discord.ui.Button[PaginatorView]):
