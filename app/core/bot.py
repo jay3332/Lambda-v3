@@ -70,6 +70,7 @@ class Bot(commands.Bot):
         message_content=True,
         presences=True,
         reactions=True,
+        voice_states=True,
     )
 
     def __init__(self) -> None:
