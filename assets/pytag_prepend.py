@@ -539,7 +539,7 @@ class engine:
             id=_INTERNAL_FMTARG('guild.owner_id'),
             name=_INTERNAL_FMTARG('guild.owner.name!r'),
             discriminator=_INTERNAL_FMTARG('guild.owner.discriminator!r'),
-            avatar_hash=_INTERNAL_FMTARG('guild.owner.avatar.key!r'),  # type: ignore
+            avatar_hash=_INTERNAL_FMTARG('guild.owner._user.display_avatar.key!r'),  # type: ignore
             nick=_INTERNAL_FMTARG('guild.owner.nick!r'),
             guild=None,  # type: ignore
             disp_avatar_hash=_INTERNAL_FMTARG('guild.owner.display_avatar.key!r'),
@@ -556,7 +556,7 @@ class engine:
         id=_INTERNAL_FMTARG('user.id'),
         name=_INTERNAL_FMTARG('user.name!r'),
         discriminator=_INTERNAL_FMTARG('user.discriminator!r'),
-        avatar_hash=_INTERNAL_FMTARG('user.avatar.key!r'),  # type: ignore
+        avatar_hash=_INTERNAL_FMTARG('user._user.display_avatar.key!r'),  # type: ignore
         nick=_INTERNAL_FMTARG('user.nick!r'),
         guild=guild,
         disp_avatar_hash=_INTERNAL_FMTARG('user.display_avatar.key!r'),
@@ -571,7 +571,7 @@ class engine:
         id=_INTERNAL_FMTARG('target.id'),
         name=_INTERNAL_FMTARG('target.name!r'),
         discriminator=_INTERNAL_FMTARG('target.discriminator!r'),
-        avatar_hash=_INTERNAL_FMTARG('target.avatar.key!r'),  # type: ignore
+        avatar_hash=_INTERNAL_FMTARG('target._user.display_avatar.key!r'),  # type: ignore
         nick=_INTERNAL_FMTARG('target.nick!r'),
         guild=guild,
         disp_avatar_hash=_INTERNAL_FMTARG('target.display_avatar.key!r'),
