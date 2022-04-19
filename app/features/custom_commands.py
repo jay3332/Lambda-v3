@@ -206,7 +206,7 @@ class CustomCommandManager:
         await self.__task
         return self
 
-    def validate_name(self, name: str) -> str:
+    def validate_name(self, name: str, guild: Snowflake) -> str:
         name = name.strip().casefold()
 
         if not 1 <= len(name) <= 50:
@@ -216,8 +216,8 @@ class CustomCommandManager:
             raise ValueError('Custom commands cannot contain whitespace.')
 
         if command := self.bot.get_command(name):
-            if isinstance(command, CustomCommand):
-                raise ValueError(f'A custom command with the name {name!r} already exists.')
+            if isinstance(command, CustomCommand) and name in self._records[guild.id]:
+                raise ValueError('A custom command with this name already exists.')
 
             raise ValueError(f'A command with the name {name!r} already exists.')
 

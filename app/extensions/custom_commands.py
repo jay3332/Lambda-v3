@@ -43,7 +43,7 @@ class CustomCommandCreateModal(discord.ui.Modal, title='Create Custom Command'):
     async def on_submit(self, interaction: discord.Interaction) -> None:
         name = self.name.value
         try:
-            name = self.manager.validate_name(name)
+            name = self.manager.validate_name(name, interaction.guild)
         except ValueError as exc:
             return await interaction.response.send_message(str(exc), ephemeral=True)
 
@@ -215,7 +215,7 @@ class CustomCommands(Cog, name='Custom Commands'):
             response = codeblock_converter(response).content
 
         try:
-            name = self.manager.validate_name(name)
+            name = self.manager.validate_name(name, ctx.guild)
         except ValueError as exc:
             return str(exc), BAD_ARGUMENT
 
