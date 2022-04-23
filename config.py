@@ -79,6 +79,13 @@ cdn_authorization: str = env('CDN_AUTHORIZATION')
 
 resolved_token: str = beta_token if beta else token
 
+# (host, port, password, secure?)
+lavalink_nodes: Collection[tuple[str, int, str | None, bool]] = [
+    ('node03.marshalxp.xyz', 443, 'marshal', True),
+] if beta else [
+    ('127.0.0.1', 2333, 'youshallnotpass', False),
+]
+
 
 class DatabaseConfig:
     """Database configuration variables."""
@@ -91,7 +98,7 @@ class DatabaseConfig:
     password: str | None = env('DB_PASSWORD')
     beta_password: str | None = txt('local_db_password.txt')
 
-    resolved_password: str = beta_password if beta else password
+    resolved_password: str | None = beta_password if beta else password
 
     @classmethod
     def as_kwargs(cls) -> dict[str, str | int | None]:

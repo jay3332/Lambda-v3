@@ -1,5 +1,7 @@
 git+https://github.com/Rapptz/discord.py
 git+https://github.com/Gorialis/jishaku
+git+https://github.com/jay3332/magmatic
+aiohttp
 asyncpg
 beautifulsoup4
 dateparser

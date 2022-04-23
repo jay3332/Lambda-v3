@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import datetime
-from time import perf_counter
+from time import perf_counter_ns
 from typing import Generic, Literal, TypeVar, TYPE_CHECKING
 
 from discord import utils
@@ -21,22 +21,30 @@ class Timer:
     __slots__ = ('start_time', 'end_time')
 
     def __init__(self) -> None:
-        self.start_time: float | None = None
-        self.end_time: float | None = None
+        self.start_time: int | None = None
+        self.end_time: int | None = None
 
     def __enter__(self: TimerT) -> TimerT:
-        self.start_time = perf_counter()
+        self.start_time = perf_counter_ns()
         return self
 
     def __exit__(self, _type, _val, _tb) -> None:
-        self.end_time = perf_counter()
+        self.end_time = perf_counter_ns()
 
     @property
-    def elapsed(self) -> float:
+    def elapsed_ns(self) -> int:
         if not (self.start_time and self.end_time):
             raise ValueError('timer has not been stopped')
 
         return self.end_time - self.start_time
+
+    @property
+    def elapsed_ms(self) -> float:
+        return self.elapsed_ns * 1e6
+
+    @property
+    def elapsed(self) -> float:
+        return self.elapsed_ns * 1e9
 
     def __repr__(self) -> str:
         return f'<Timer elapsed={self.elapsed}>'

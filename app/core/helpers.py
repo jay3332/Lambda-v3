@@ -39,7 +39,7 @@ REPLY = sentinel('REPLY', repr='REPLY')
 BAD_ARGUMENT = sentinel('BAD_ARGUMENT', repr='BAD_ARGUMENT')
 ERROR = sentinel('ERROR', repr='ERROR')
 
-MISSING = sentinel('MISSING', bool=False, repr='MISSING')
+MISSING: Any = sentinel('MISSING', bool=False, repr='MISSING')  # type: ignore
 
 
 class Param:
