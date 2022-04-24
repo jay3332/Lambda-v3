@@ -350,11 +350,10 @@ class Bot(commands.Bot):
         builder.extend(signature)
         signature = signature.raw
 
-        match = re.search(
+        if match := re.search(
             fr"[<\[](--)?{re.escape(param.name)}((=.*)?| [<\[]\w+(\.{{3}})?[>\]])(\.{{3}})?[>\]](\.{{3}})?",
             signature,
-        )
-        if match:
+        ):
             lower, upper = match.span()
         elif isinstance(param.annotation, FlagMeta):
             param_store = command.params
@@ -370,7 +369,7 @@ class Bot(commands.Bot):
 
             upper = len(command.signature) - 1
         else:
-            raise RuntimeError('could not match parameter in signature')
+            lower, upper = 0, len(command.signature) - 1
 
         builder.newline()
 

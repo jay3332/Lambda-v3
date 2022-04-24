@@ -81,7 +81,7 @@ resolved_token: str = beta_token if beta else token
 
 # (host, port, password, secure?)
 lavalink_nodes: Collection[tuple[str, int, str | None, bool]] = [
-    ('node03.marshalxp.xyz', 443, 'marshal', True),
+    ('lavalink.gaproknetwork.xyz', 2333, 'gaproklavalink', False),
 ] if beta else [
     ('127.0.0.1', 2333, 'youshallnotpass', False),
 ]
@@ -125,6 +125,7 @@ class Emojis:
 
     plus: str = '<:plus:962150204973395998>'
     loading: str = '<a:loading:812768154198736898>'
+    youtube: str = '<:youtube:967577973018472458>'
 
     class Arrows:
         previous: str = '\u25c0'
@@ -160,3 +161,12 @@ class Emojis:
         right_mid: str = '<:pb_right_2:937083245173026887>'
         right_high: str = '<:pb_right_3:937083276827439164>'
         right_full: str = '<:pb_right_4:937083328648056862>'
+
+    class MusicBarEmojis:
+        L0 = '<:music_bar_left_0:853703674634436629>'
+        L1 = '<:music_bar_left_1:853703674593673256>'
+        M0 = '<:music_bar_middle_0:853701237802139689>'
+        M1 = '<:music_bar_middle_1:853702246957056001>'
+        R0 = '<:music_bar_right_0:853703674585153566>'
+        R1 = '<:music_bar_right_1:853703674638499871>'
+        LIVE = '<:music_live:853724359947714610>'
