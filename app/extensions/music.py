@@ -7,7 +7,6 @@ from typing import Any, Callable, ClassVar, Coroutine, Iterator, TYPE_CHECKING, 
 import discord
 import magmatic
 from discord.ext import commands
-from discord.guild import VocalGuildChannel
 
 from app.core import Bot, Cog, ERROR, Flags, MISSING, REPLY, command, store_true
 from app.core.helpers import GenericCommandError
@@ -16,6 +15,8 @@ from app.util.common import humanize_list, ordinal
 from config import Colors, Emojis, lavalink_nodes
 
 if TYPE_CHECKING:
+    from discord.guild import VocalGuildChannel
+
     from app.core import Command, Context
     from app.util.types import CommandResponse, OptionalCommandResponse
 
