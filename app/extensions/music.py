@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import asyncio
 from math import ceil
-from typing import Any, Callable, ClassVar, Coroutine, TYPE_CHECKING, Type, TypeAlias
+from typing import Any, Callable, ClassVar, Coroutine, Iterator, TYPE_CHECKING, Type, TypeAlias
 
 import discord
 import magmatic
 from discord.ext import commands
+from discord.guild import VocalGuildChannel
 
-from app.core import Bot, Cog, ERROR, MISSING, REPLY, command
+from app.core import Bot, Cog, ERROR, Flags, MISSING, REPLY, command, store_true
 from app.core.helpers import GenericCommandError
 from app.util import converter
 from app.util.common import humanize_list, ordinal
@@ -81,6 +82,7 @@ class LoopTypeSelect(discord.ui.Select):
             ],
         )
         self.original: DJControlsView = original
+        self.interaction: discord.Interaction = original.original_interaction
 
     async def callback(self, interaction: discord.Interaction) -> Any:
         value = magmatic.LoopType(int(self.values[0]))
@@ -88,7 +90,10 @@ class LoopTypeSelect(discord.ui.Select):
         self.original.change_loop_type.emoji = emoji = DJControlsView.LOOP_EMOJIS[value]
 
         await interaction.response.edit_message(
-            content='Updated:',
+            content=f'Updated loop type to {emoji} **{value.name.title()}**.',  # type: ignore
+            view=None,
+        )
+        await self.interaction.edit_original_message(
             embed=self.original.build_embed(),
             view=self.original,
         )
@@ -105,12 +110,14 @@ class DJControlsView(discord.ui.View):
         magmatic.LoopType.track: '\U0001f502',
     }
 
-    def __init__(self, player: Player) -> None:
+    def __init__(self, player: Player, interaction: discord.Interaction) -> None:
         super().__init__()
         self.player: Player = player
+        self.original_interaction: discord.Interaction = interaction
 
         self.change_volume.emoji = self.volume_speaker_emoji(player.volume)
         self.change_loop_type.emoji = self.LOOP_EMOJIS[player.queue.loop_type]
+        self._update_pause_button()
 
     @staticmethod
     def volume_speaker_emoji(volume: int) -> str:
@@ -146,6 +153,7 @@ class DJControlsView(discord.ui.View):
         embed.set_author(name=f'{ctx.guild.name}: Music Controls', icon_url=ctx.guild.icon)
 
         embed.add_field(name='Volume', value=f'{self.volume_speaker_emoji(self.player.volume)} {self.player.volume}%')
+        embed.add_field(name='Paused?', value=f"\U000023f8 {'Yes' if self.player.is_paused() else 'No'}")
 
         loop_type = self.player.queue.loop_type
         embed.add_field(name='Loop Type', value=f'{self.LOOP_EMOJIS[loop_type]} {loop_type.name.title()}')
@@ -169,6 +177,32 @@ class DJControlsView(discord.ui.View):
 
         await interaction.response.send_message('Choose a loop type:', view=view, ephemeral=True)
 
+    def _update_pause_button(self) -> None:
+        if self.player.is_paused():
+            self.pause.label = 'Resume'
+            self.pause.emoji = '\U000025b6'
+            self.pause.style = discord.ButtonStyle.danger
+            return
+
+        self.pause.label = 'Pause'
+        self.pause.emoji = '\U000023f8'
+        self.pause.style = discord.ButtonStyle.primary
+
+    @discord.ui.button(label='Pause', style=discord.ButtonStyle.primary, row=0)
+    async def pause(self, interaction: discord.Interaction, button: discord.ui.Button) -> Any:
+        await self.player.toggle_pause()
+        emoji, label = button.emoji, button.label
+        self._update_pause_button()
+
+        await interaction.response.edit_message(
+            embed=self.build_embed(),
+            view=self,
+        )
+        await self.player.ctx.send(
+            f'[Music] Track was {emoji} **{label.lower()}d** by {interaction.user.mention}.',
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
 
 class DJControlsEntrypoint(discord.ui.Button):
     FILTER_NAMES: ClassVar[dict[Type[magmatic.BaseFilter], str]] = {
@@ -188,7 +222,7 @@ class DJControlsEntrypoint(discord.ui.Button):
         if interaction.user not in self.player.djs:
             return await interaction.response.send_message('Only DJs can use this button.', ephemeral=True)
 
-        view = DJControlsView(self.player)
+        view = DJControlsView(self.player, interaction)
 
         await interaction.response.send_message(
             f'Controlling music for **{self.player.ctx.guild.name}**:',
@@ -228,6 +262,7 @@ class Player(magmatic.Player[Bot]):
         self.started: bool = False
         self.suppress_messages: bool = False
 
+        self._votes: set[discord.Member] = set()
         self._tracks: dict[str, MusicTrack] = {}
         self._initial_task = node.bot.loop.create_task(self._initial_disconnect_runner())
 
@@ -365,13 +400,25 @@ class Player(magmatic.Player[Bot]):
 
         return embed
 
+    def is_dj(self, user: discord.Member) -> bool:
+        return (
+            user in self.djs
+            or user.guild_permissions.administrator
+            or user.guild_permissions.manage_guild
+            or discord.utils.get(user.roles, name='DJ') is not None
+        )
+
+    @property
+    def skip_threshold(self) -> int:
+        return ceil(Music.count_members(self.channel) / 2)  # type: ignore
+
 
 def dj_only() -> Callable[[Command], Command]:
     def predicate(ctx: MusicContext) -> bool:
         if not ctx.voice_client:
-            raise GenericCommandError('You must be in a voice channel to use this command.')
+            raise GenericCommandError('I must be in a voice channel to use this command.')
 
-        if ctx.author not in ctx.voice_client.djs:
+        if not ctx.voice_client.is_dj(ctx.author):
             raise GenericCommandError('You must be a DJ to use this command.')
 
         return True
@@ -401,6 +448,10 @@ def ensure_player() -> Callable[[Command], Command]:
         return True
 
     return commands.check(predicate)
+
+
+class SkipFlags(Flags):
+    force: bool = store_true(short='f')
 
 
 class Music(Cog):
@@ -437,6 +488,49 @@ class Music(Cog):
 
         return None
 
+    @staticmethod
+    def walk_members(channel: VocalGuildChannel) -> Iterator[discord.Member]:
+        return (member for member in channel.members if not member.bot)
+
+    @staticmethod
+    def count_members(channel: VocalGuildChannel) -> int:
+        return sum(1 for _ in Music.walk_members(channel))
+
+    @Cog.listener()
+    async def on_voice_state_update(
+        self,
+        member: discord.Member,
+        _before: discord.VoiceState,
+        after: discord.VoiceState,
+    ) -> None:
+        if member.bot:
+            return
+
+        player: Player | None = member.guild.voice_client
+        if player is None:
+            return
+
+        if member not in player.djs or after.channel == player.channel:
+            return
+
+        player.djs.remove(member)
+        if player.djs:
+            return
+
+        # Attempt to swap DJs
+        try:
+            new = next(self.walk_members(player.channel))  # type: ignore
+        except StopIteration:
+            await player.destroy()
+            await player.ctx.send('[Music] All users have left! Disconnecting...')
+            return
+
+        player.djs.append(new)
+        await player.ctx.send(
+            f'[Music] {new.mention} is now the DJ since the old DJ has left the channel.',
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
     @command(name='join', aliases=('connect', 'j', 'summon', 'move-to'))
     async def join(self, ctx: MusicContext, channel: discord.VoiceChannel = None) -> CommandResponse:
         """Connects or moves the Lambda music player to the specified voice channel.
@@ -449,11 +543,17 @@ class Music(Cog):
 
         channel = channel or ctx.author.voice.channel
 
-        if ctx.voice_client is not None:
-            await ctx.voice_client.move_to(channel)
-        else:
+        if ctx.voice_client is None:
             player: Player = self.pool.get_player(guild=ctx.guild, cls=Player)
             await player.connect(channel)
+
+        elif ctx.voice_client.is_dj(ctx.author):
+            if channel == ctx.voice_client.channel:
+                return f'Already connected to {channel.mention}.', REPLY
+
+            await ctx.voice_client.move_to(channel)
+        else:
+            return 'You must be a DJ in order to move me.', ERROR
 
         ctx.voice_client.ctx = ctx
         try:
@@ -487,7 +587,7 @@ class Music(Cog):
         else:
             message = f'{Emojis.youtube} Enqueued **{track.title}** ({Player._format_duration(track.duration)})'
 
-        if ctx.author in ctx.voice_client.djs or not ctx.voice_client.started:
+        if ctx.voice_client.is_dj(ctx.author) or not ctx.voice_client.started:
             view = discord.ui.View()
             view.add_item(DJControlsEntrypoint(ctx.voice_client))
         else:
@@ -524,10 +624,42 @@ class Music(Cog):
             title='Currently playing:',
         )
         current = ctx.voice_client.queue.current
-        if ctx.author in ctx.voice_client.djs:
+        if ctx.voice_client.is_dj(ctx.author):
             view = NowPlayingView(ctx.voice_client, current)
         else:
             view = discord.ui.View()
             view.add_item(discord.ui.Button(label='Jump to Message', url=current.metadata.message.jump_url))
 
         return embed, view, REPLY
+
+    @has_player()
+    @command(name='skip', aliases=('skip-track', 'voteskip', 'sk'))
+    async def skip(self, ctx: MusicContext, *, flags: SkipFlags) -> CommandResponse:
+        """Vote to skip the currently playing track. Add the ``--force`` flag to skip immediately if you are the DJ."""
+        player = ctx.voice_client
+        title = player.queue.current.title
+
+        if not player.is_dj(ctx.author) or not flags.force:
+            if ctx.author in player._votes:
+                return 'You have already voted to skip this track.', REPLY
+
+            player._votes.add(ctx.author)
+            if len(player._votes) < player.skip_threshold:
+                try:
+                    await ctx.thumbs()
+                finally:
+                    return (
+                        f'Voted to skip **{title}**. ({len(player._votes)}/{player.skip_threshold})',
+                        REPLY,
+                    )
+                # TODO: vote skip button on now playing view
+
+        if player.queue.up_next is None:
+            await player.stop()
+
+        await player.play_skip()
+
+        try:
+            await ctx.thumbs()
+        finally:
+            return f'Skipped **{title}**.', REPLY

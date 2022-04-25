@@ -40,11 +40,11 @@ class Timer:
 
     @property
     def elapsed_ms(self) -> float:
-        return self.elapsed_ns * 1e6
+        return self.elapsed_ns / 1e6
 
     @property
     def elapsed(self) -> float:
-        return self.elapsed_ns * 1e9
+        return self.elapsed_ns / 1e9
 
     def __repr__(self) -> str:
         return f'<Timer elapsed={self.elapsed}>'
