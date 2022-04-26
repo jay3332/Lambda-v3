@@ -20,8 +20,11 @@ class UserView(discord.ui.View):
 
 
 class ConfirmationView(UserView):
-    def __init__(self, *, user: AnyUser, true: str, false: str, timeout: float = None) -> None:
+    def __init__(
+        self, *, user: AnyUser, true: str = 'Confirm', false: str = 'Cancel', timeout: float = None, defer: bool = True,
+    ) -> None:
         self.value: bool | None = None
+        self._defer: bool = defer
         super().__init__(user, timeout=timeout)
 
         self._true_button = discord.ui.Button(style=discord.ButtonStyle.success, label=true)
@@ -30,12 +33,16 @@ class ConfirmationView(UserView):
         self._true_button.callback = self._make_callback(True)
         self._false_button.callback = self._make_callback(False)
 
+        self.interaction: discord.Interaction | None = None
+
         self.add_item(self._true_button)
         self.add_item(self._false_button)
 
     def _make_callback(self, toggle: bool) -> Callable[[discord.Interaction], Awaitable[None]]:
         async def callback(interaction: discord.Interaction) -> None:
             self.value = toggle
+            self.interaction = interaction
+
             self._true_button.disabled = True
             self._false_button.disabled = True
 
@@ -45,7 +52,8 @@ class ConfirmationView(UserView):
                 self._true_button.style = discord.ButtonStyle.secondary
 
             self.stop()
-            await interaction.response.defer()
+            if self._defer:
+                await interaction.response.defer()
 
         return callback
 

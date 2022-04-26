@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
+from copy import deepcopy
 from math import ceil
 from typing import Any, Callable, ClassVar, Coroutine, Iterator, TYPE_CHECKING, Type, TypeAlias
 
@@ -12,6 +14,8 @@ from app.core import Bot, Cog, ERROR, Flags, MISSING, REPLY, command, store_true
 from app.core.helpers import GenericCommandError
 from app.util import converter
 from app.util.common import humanize_list, ordinal
+from app.util.pagination import Formatter, Paginator
+from app.util.views import ConfirmationView
 from config import Colors, Emojis, lavalink_nodes
 
 if TYPE_CHECKING:
@@ -29,6 +33,62 @@ if TYPE_CHECKING:
 @converter
 async def TrackContext(ctx: MusicContext, _) -> MusicContext:
     return ctx
+
+
+class VoteSkip(discord.ui.Button):
+    def __init__(self, player: Player) -> None:
+        super().__init__(
+            label=f'Vote to Skip ({len(player._votes)}/{player.skip_threshold})',
+            emoji='⏭️',
+            style=discord.ButtonStyle.primary,
+        )
+        self.player: Player = player
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if not self.player.queue.current:
+            return await interaction.response.send_message(
+                'I\'m not playing any tracks that you can skip right now.',
+                ephemeral=True,
+            )
+
+        if interaction.user in self.player._votes:
+            return await interaction.response.send_message(
+                'You have already voted to skip this track.',
+                ephemeral=True,
+            )
+
+        self.player._votes.add(interaction.user)
+        if len(self.player._votes) >= self.player.skip_threshold:
+            await interaction.response.send_message(
+                'Vote to skip passed. Skipping track...',
+                ephemeral=True,
+            )
+            await self.player.skip()
+
+            self.disabled = True
+            self.label = 'Vote to Skip (Passed)'
+            await interaction.edit_original_message(
+                view=self.view,
+            )
+            await self.player.ctx.send(
+                f'[Music] {interaction.user.mention} casted the winning vote to skip the current track, so I\'ve skipped the track.',
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+            return
+
+        await interaction.response.send_message(
+            f'You have voted to skip this track. ({len(self.player._votes)}/{self.player.skip_threshold})',
+            ephemeral=True,
+        )
+        self.label = f'Vote to Skip ({len(self.player._votes)}/{self.player.skip_threshold})'
+
+        await interaction.message.edit(
+            view=self.view,
+        )
+        await self.player.ctx.send(
+            f'[Music] {interaction.user.mention} voted to skip the current track. ({len(self.player._votes)}/{self.player.skip_threshold})',
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
 
 
 class VolumeChangeModal(discord.ui.Modal, title='Change Volume'):
@@ -91,7 +151,7 @@ class LoopTypeSelect(discord.ui.Select):
         self.original.change_loop_type.emoji = emoji = DJControlsView.LOOP_EMOJIS[value]
 
         await interaction.response.edit_message(
-            content=f'Updated loop type to {emoji} **{value.name.title()}**.',  # type: ignore
+            content=f'Updated loop type to {emoji} **{value.name.title()}**. You can dismiss this now.',  # type: ignore
             view=None,
         )
         await self.interaction.edit_original_message(
@@ -119,6 +179,7 @@ class DJControlsView(discord.ui.View):
         self.change_volume.emoji = self.volume_speaker_emoji(player.volume)
         self.change_loop_type.emoji = self.LOOP_EMOJIS[player.queue.loop_type]
         self._update_pause_button()
+        self.skip_track.disabled = player.queue.current is None
 
     @staticmethod
     def volume_speaker_emoji(volume: int) -> str:
@@ -204,6 +265,36 @@ class DJControlsView(discord.ui.View):
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
+    @discord.ui.button(label='Skip Track', style=discord.ButtonStyle.primary, emoji='\U000023ed', row=0)
+    async def skip_track(self, interaction: discord.Interaction, button: discord.ui.Button) -> Any:
+        view = ConfirmationView(user=interaction.user, true='Skip!', defer=False)
+        await interaction.response.send_message(
+            f'I\'m currently playing **{self.player.queue.current.title}**.\n'
+            'Are you sure you want to skip this track?',
+            view=view,
+            ephemeral=True,
+        )
+        await view.wait()
+
+        if not view.value:
+            return await view.interaction.response.edit_message(content='Cancelled.', view=view)
+
+        button.disabled = self.player.queue.current is None
+        await self.player.skip()
+
+        await self.original_interaction.edit_original_message(
+            embed=self.build_embed(),
+            view=self,
+        )
+        await view.interaction.response.edit_message(
+            content='\U000023ed Track skipped!',
+            view=view,
+        )
+        await self.player.ctx.send(
+            f'[Music] Track was \U000023ed **skipped** by {interaction.user.mention}.',
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+
 
 class DJControlsEntrypoint(discord.ui.Button):
     FILTER_NAMES: ClassVar[dict[Type[magmatic.BaseFilter], str]] = {
@@ -238,6 +329,7 @@ class NowPlayingView(discord.ui.View):
         super().__init__(timeout=900)
 
         self.add_item(discord.ui.Button(label='Jump to Message', url=track.metadata.message.jump_url))
+        self.add_item(VoteSkip(player))
         self.add_item(DJControlsEntrypoint(player))
 
         self.player: Player = player
@@ -249,6 +341,46 @@ class NowPlayingView(discord.ui.View):
             return False
 
         return True
+
+
+class QueueFormatter(Formatter[magmatic.Track['MusicContext']]):
+    def __init__(self, player: Player, embed: discord.Embed) -> None:
+        super().__init__(list(player.queue), per_page=5)
+
+        self.player: Player = player
+        self.embed: discord.Embed = embed
+
+    @property
+    def queue(self) -> magmatic.WaitableQueue[MusicContext]:
+        return self.player.queue
+
+    async def format_page(self, paginator: Paginator, entries: list[magmatic.Track[MusicContext]]) -> discord.Embed:
+        embed = discord.Embed.from_dict(deepcopy(self.embed.to_dict()))
+        escape = discord.utils.escape_markdown
+
+        if current := self.queue.current:
+            remaining = Player._format_duration(current.duration - self.player.position)
+            embed.description += '\n\n' + (
+                f'**Currently playing:** ({self.queue.current_index + 1}) [{escape(current.title)}]({current.uri})\n'
+                f'Author: {escape(current.author)} \u2014 {remaining} remaining\n'
+                f'Requested by {current.metadata.author.mention}'
+            )
+
+        if up_next := self.queue.up_next:
+            embed.description += f'\n\n*Up next: [{escape(up_next.title)}]({up_next.uri})* ({Player._format_duration(up_next.duration)})'
+
+        for i, track in enumerate(entries, start=paginator.current_page * 5):
+            title = f'**{i + 1}.** [{escape(track.title)}]({track.uri})'
+
+            if i == self.queue.current_index:
+                title = fr'**\>** {title} **\<**'
+
+            embed.description += '\n\n' + (
+                f'{title}\nAuthor: {escape(track.author)} \u2014 Duration: {Player._format_duration(track.duration)}\n'
+                f'Requested by {track.metadata.author.mention}'
+            )
+
+        return embed
 
 
 class Player(magmatic.Player[Bot]):
@@ -305,6 +437,14 @@ class Player(magmatic.Player[Bot]):
     async def play_skip(self) -> None:
         await self._play(self.queue.skip_wait())
 
+    async def skip(self) -> None:
+        self._votes.clear()
+
+        if self.queue.up_next is None:
+            await self.stop()
+
+        await self.play_skip()
+
     async def on_track_start(self, event: magmatic.TrackStartEvent) -> None:
         if self.suppress_messages:
             self.suppress_messages = False
@@ -324,8 +464,14 @@ class Player(magmatic.Player[Bot]):
         if event.may_start_next:
             return await self.play_next()
 
+        if event.reason in (
+            magmatic.TrackEndReason.replaced,
+            magmatic.TrackEndReason.stopped,
+            magmatic.TrackEndReason.cleanup,
+        ):
+            return
         try:
-            await self.ctx.send(f'[Music] Track ended unexpectedly. ({event.reason}) Disconnecting...')
+            await self.ctx.send(f'[Music] Track ended unexpectedly ({event.reason.name}). Disconnecting...')
         finally:
             await self.destroy()
 
@@ -411,7 +557,7 @@ class Player(magmatic.Player[Bot]):
 
     @property
     def skip_threshold(self) -> int:
-        return ceil(Music.count_members(self.channel) / 2)  # type: ignore
+        return Music.count_members(self.channel) // 2 + 1  # type: ignore
 
 
 def dj_only() -> Callable[[Command], Command]:
@@ -430,7 +576,7 @@ def dj_only() -> Callable[[Command], Command]:
 def has_player() -> Callable[[Command], Command]:
     def predicate(ctx: MusicContext) -> bool:
         if not ctx.voice_client:
-            raise GenericCommandError('You must be in a voice channel to use this command.')
+            raise GenericCommandError('I must be in a voice channel to use this command.')
 
         return True
 
@@ -463,6 +609,7 @@ class Music(Cog):
 
     async def cog_load(self) -> None:
         self.pool: magmatic.NodePool = magmatic.DefaultNodePool
+        self.join_locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)
 
         for host, port, password, secure in lavalink_nodes:
             await self.pool.start_node(
@@ -539,28 +686,29 @@ class Music(Cog):
         Arguments:
         - `channel`: The voice channel to connect to. Defaults to the channel you are in.
         """
-        if response := self._check_channel(ctx, channel):
-            return response
+        async with self.join_locks[ctx.guild.id]:
+            if response := self._check_channel(ctx, channel):
+                return response
 
-        channel = channel or ctx.author.voice.channel
+            channel = channel or ctx.author.voice.channel
 
-        if ctx.voice_client is None:
-            player: Player = self.pool.get_player(guild=ctx.guild, cls=Player)
-            await player.connect(channel)
+            if ctx.voice_client is None:
+                player: Player = self.pool.get_player(guild=ctx.guild, cls=Player)
+                await player.connect(channel)
 
-        elif ctx.voice_client.is_dj(ctx.author):
-            if channel == ctx.voice_client.channel:
-                return f'Already connected to {channel.mention}.', REPLY
+            elif ctx.voice_client.is_dj(ctx.author):
+                if channel == ctx.voice_client.channel:
+                    return f'Already connected to {channel.mention}.', REPLY
 
-            await ctx.voice_client.move_to(channel)
-        else:
-            return 'You must be a DJ in order to move me.', ERROR
+                await ctx.voice_client.move_to(channel)
+            else:
+                return 'You must be a DJ in order to move me.', ERROR
 
-        ctx.voice_client.ctx = ctx
-        try:
-            await ctx.thumbs()
-        finally:
-            return f'\U0001f50a Joined {channel.mention}', REPLY
+            ctx.voice_client.ctx = ctx
+            try:
+                await ctx.thumbs()
+            finally:
+                return f'\U0001f50a Joined {channel.mention}', REPLY
 
     @dj_only()
     @command(name='leave', aliases=('disconnect', 'dis', 'go-away'))
@@ -638,6 +786,9 @@ class Music(Cog):
     async def skip(self, ctx: MusicContext, *, flags: SkipFlags) -> CommandResponse:
         """Vote to skip the currently playing track. Add the ``--force`` flag to skip immediately if you are the DJ."""
         player = ctx.voice_client
+        if not player.queue.current:
+            return 'No track is currently playing that I can skip.', REPLY
+
         title = player.queue.current.title
 
         if not player.is_dj(ctx.author) or not flags.force:
@@ -646,21 +797,36 @@ class Music(Cog):
 
             player._votes.add(ctx.author)
             if len(player._votes) < player.skip_threshold:
-                try:
-                    await ctx.thumbs()
-                finally:
-                    return (
-                        f'Voted to skip **{title}**. ({len(player._votes)}/{player.skip_threshold})',
-                        REPLY,
-                    )
-                # TODO: vote skip button on now playing view
+                view = discord.ui.View()
+                view.add_item(VoteSkip(player))
 
-        if player.queue.up_next is None:
-            await player.stop()
+                await ctx.thumbs()
+                return (
+                    f'Voted to skip **{title}**. ({len(player._votes)}/{player.skip_threshold})',
+                    view,
+                    REPLY,
+                )
 
-        await player.play_skip()
-
+        await player.skip()
         try:
             await ctx.thumbs()
         finally:
             return f'Skipped **{title}**.', REPLY
+
+    @has_player()
+    @command(name='queue', aliases=('q', 'upcoming'))
+    async def queue(self, ctx: MusicContext) -> CommandResponse:
+        """Shows the player's music queue."""
+        queue = ctx.voice_client.queue
+
+        embed = discord.Embed(color=Colors.primary, timestamp=ctx.now)
+        embed.set_author(name=f'Music Queue: {ctx.guild.name}', icon_url=ctx.guild.icon)
+        embed.set_footer(text=f'{len(queue)} tracks in queue.')
+
+        if queue.loop_type is not magmatic.LoopType.none:
+            emoji = DJControlsView.LOOP_EMOJIS[queue.loop_type]
+            embed.description = f'Looping the {emoji} **{queue.loop_type.name.lower()}**'
+        else:
+            embed.description = 'Queue is not looping.'
+
+        return Paginator(ctx, QueueFormatter(ctx.voice_client, embed)), REPLY
