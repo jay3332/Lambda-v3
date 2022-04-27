@@ -345,7 +345,7 @@ class NowPlayingView(discord.ui.View):
 
 class QueueFormatter(Formatter[magmatic.Track['MusicContext']]):
     def __init__(self, player: Player, embed: discord.Embed) -> None:
-        super().__init__(list(player.queue), per_page=5)
+        super().__init__(list(player.queue), per_page=4)
 
         self.player: Player = player
         self.embed: discord.Embed = embed
@@ -362,8 +362,8 @@ class QueueFormatter(Formatter[magmatic.Track['MusicContext']]):
             remaining = Player._format_duration(current.duration - self.player.position)
             embed.description += '\n\n' + (
                 f'**Currently playing:** ({self.queue.current_index + 1}) [{escape(current.title)}]({current.uri})\n'
-                f'Author: {escape(current.author)} \u2014 {remaining} remaining\n'
-                f'Requested by {current.metadata.author.mention}'
+                f'{Emojis.ExpansionEmojis.first} Author: **{escape(current.author)}** \u2014 **{remaining}** remaining\n'
+                f'{Emojis.ExpansionEmojis.last} Requested by {current.metadata.author.mention}'
             )
 
         if up_next := self.queue.up_next:
@@ -373,11 +373,13 @@ class QueueFormatter(Formatter[magmatic.Track['MusicContext']]):
             title = f'**{i + 1}.** [{escape(track.title)}]({track.uri})'
 
             if i == self.queue.current_index:
-                title = fr'**\>** {title} **\<**'
+                title = f'{Emojis.arrow} {title}'
 
             embed.description += '\n\n' + (
-                f'{title}\nAuthor: {escape(track.author)} \u2014 Duration: {Player._format_duration(track.duration)}\n'
-                f'Requested by {track.metadata.author.mention}'
+                f'{title}\n'
+                f'{Emojis.ExpansionEmojis.first} Author: **{escape(track.author)}** \u2014 '
+                f'Duration: **{Player._format_duration(track.duration)}**\n'
+                f'{Emojis.ExpansionEmojis.last} Requested by {track.metadata.author.mention}'
             )
 
         return embed
@@ -398,6 +400,7 @@ class Player(magmatic.Player[Bot]):
         self._votes: set[discord.Member] = set()
         self._tracks: dict[str, MusicTrack] = {}
         self._initial_task = node.bot.loop.create_task(self._initial_disconnect_runner())
+        self._skip_task: asyncio.Task | None = None
 
     async def _initial_disconnect_runner(self) -> None:
         await asyncio.sleep(300)
@@ -443,7 +446,10 @@ class Player(magmatic.Player[Bot]):
         if self.queue.up_next is None:
             await self.stop()
 
-        await self.play_skip()
+        if self._skip_task is not None:
+            self._skip_task.cancel()
+
+        self._skip_task = self.bot.loop.create_task(self.play_skip())
 
     async def on_track_start(self, event: magmatic.TrackStartEvent) -> None:
         if self.suppress_messages:

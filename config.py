@@ -126,6 +126,8 @@ class Emojis:
     plus: str = '<:plus:962150204973395998>'
     loading: str = '<a:loading:812768154198736898>'
     youtube: str = '<:youtube:967577973018472458>'
+    arrow: str = '<:arrow:831333449562062908>'
+    space: str = '<:space:968652789498671104>'
 
     class Arrows:
         previous: str = '\u25c0'
@@ -170,3 +172,10 @@ class Emojis:
         R0 = '<:music_bar_right_0:853703674585153566>'
         R1 = '<:music_bar_right_1:853703674638499871>'
         LIVE = '<:music_live:853724359947714610>'
+
+    class ExpansionEmojis:
+        first = '<:expansion_first:968651020097945811>'
+        mid = '<:expansion_mid:968652421721120828>'
+        last = '<:expansion_last:968652421700124723>'
+        ext = '<:expansion_ext:968653920106872842>'
+        single = '<:expansion_single:968652421377167371>'

@@ -4,7 +4,7 @@ import asyncio
 import re
 from functools import wraps
 from inspect import iscoroutinefunction
-from typing import Any, Awaitable, Callable, ParamSpec, TYPE_CHECKING, Type, TypeVar
+from typing import Any, Awaitable, Callable, Iterable, ParamSpec, TYPE_CHECKING, Type, TypeVar
 
 from discord.ext.commands import Converter
 
@@ -209,6 +209,38 @@ def preinstantiate(*args: Any, **kwargs: Any) -> Callable[[Type[T]], T]:
         return cls(*args, **kwargs)
 
     return decorator
+
+
+def expansion_list(entries: Iterable[str]) -> str:
+    """Formats a list into expansion format."""
+    entries = list(entries)
+    emojis = Emojis.ExpansionEmojis
+
+    if len(entries) == 1:
+        first, *lines = entries[0].splitlines()
+        result = f'{emojis.single} {first}'
+
+        if lines:
+            result += '\n' + '\n'.join(f'{Emojis.space} {line}' for line in lines)
+
+        return result
+
+    result = []
+
+    for i, entry in enumerate(entries):
+        first, *lines = entry.splitlines()
+
+        if i + 1 == len(entries):
+            result.append(f'{emojis.last} {first}')
+            result.extend(f'{Emojis.space} {line}' for line in lines)
+            continue
+
+        emoji = emojis.first if i == 0 else emojis.mid
+
+        result.append(f'{emoji} {first}')
+        result.extend(f'{emojis.ext} {line}' for line in lines)
+
+    return '\n'.join(result)
 
 
 def progress_bar(ratio: float, *, length: int = 8, u200b: bool = True) -> str:
