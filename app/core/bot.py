@@ -141,7 +141,7 @@ class Bot(commands.Bot):
         await self.load_extension('jishaku')
 
         for file in os.listdir('./app/extensions'):
-            if file == 'compat.py' or file.startswith('_') or not file.endswith('.py'):
+            if file in ('compat.py', 'custom_commands.py') or file.startswith('_') or not file.endswith('.py'):
                 continue
 
             extension = f'app.extensions.{file[:-3]}'
@@ -152,7 +152,9 @@ class Bot(commands.Bot):
             else:
                 self.log.info(f'Loaded extension: {extension}')
 
-        await self.load_extension('app.extensions.compat')  # Load this last
+        # Load these last
+        await self.load_extension('app.extensions.compat')
+        await self.load_extension('app.extensions.custom_commands')
 
     async def reload_extension(self, name: str, *, package: str | None = None) -> None:
         """Reloads an extension."""

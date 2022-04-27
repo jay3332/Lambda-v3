@@ -10,7 +10,7 @@ import discord
 import magmatic
 from discord.ext import commands
 
-from app.core import Bot, Cog, ERROR, Flags, MISSING, REPLY, command, store_true
+from app.core import BAD_ARGUMENT, Bot, Cog, ERROR, Flags, MISSING, REPLY, command, store_true
 from app.core.helpers import GenericCommandError
 from app.util import converter
 from app.util.common import humanize_list, ordinal
@@ -228,11 +228,11 @@ class DJControlsView(discord.ui.View):
         embed.add_field(name='Filters', value=self.get_filter_description(), inline=False)
         return embed
 
-    @discord.ui.button(label='Change Volume', style=discord.ButtonStyle.primary, row=0)
+    @discord.ui.button(label='Change Volume', row=0)
     async def change_volume(self, interaction: discord.Interaction, _) -> Any:
         await interaction.response.send_modal(VolumeChangeModal(self))
 
-    @discord.ui.button(label='Change Loop Type', style=discord.ButtonStyle.primary, row=0)
+    @discord.ui.button(label='Change Loop Type', row=0)
     async def change_loop_type(self, interaction: discord.Interaction, _) -> Any:
         view = discord.ui.View()
         view.add_item(LoopTypeSelect(self))
@@ -265,7 +265,7 @@ class DJControlsView(discord.ui.View):
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
-    @discord.ui.button(label='Skip Track', style=discord.ButtonStyle.primary, emoji='\U000023ed', row=0)
+    @discord.ui.button(label='Skip Track', style=discord.ButtonStyle.success, emoji='\U000023ed', row=0)
     async def skip_track(self, interaction: discord.Interaction, button: discord.ui.Button) -> Any:
         view = ConfirmationView(user=interaction.user, true='Skip!', defer=False)
         await interaction.response.send_message(
@@ -358,16 +358,19 @@ class QueueFormatter(Formatter[magmatic.Track['MusicContext']]):
         embed = discord.Embed.from_dict(deepcopy(self.embed.to_dict()))
         escape = discord.utils.escape_markdown
 
+        embed.description += '\n\n'
         if current := self.queue.current:
-            remaining = Player._format_duration(current.duration - self.player.position)
-            embed.description += '\n\n' + (
+            remaining = Player.format_duration(current.duration - self.player.position)
+            embed.description += (
                 f'**Currently playing:** ({self.queue.current_index + 1}) [{escape(current.title)}]({current.uri})\n'
                 f'{Emojis.ExpansionEmojis.first} Author: **{escape(current.author)}** \u2014 **{remaining}** remaining\n'
                 f'{Emojis.ExpansionEmojis.last} Requested by {current.metadata.author.mention}'
             )
+        else:
+            embed.description += 'No tracks are currently playing!'
 
         if up_next := self.queue.up_next:
-            embed.description += f'\n\n*Up next: [{escape(up_next.title)}]({up_next.uri})* ({Player._format_duration(up_next.duration)})'
+            embed.description += f'\n\n*Up next: [{escape(up_next.title)}]({up_next.uri})* ({Player.format_duration(up_next.duration)})'
 
         for i, track in enumerate(entries, start=paginator.current_page * 5):
             title = f'**{i + 1}.** [{escape(track.title)}]({track.uri})'
@@ -378,7 +381,7 @@ class QueueFormatter(Formatter[magmatic.Track['MusicContext']]):
             embed.description += '\n\n' + (
                 f'{title}\n'
                 f'{Emojis.ExpansionEmojis.first} Author: **{escape(track.author)}** \u2014 '
-                f'Duration: **{Player._format_duration(track.duration)}**\n'
+                f'Duration: **{Player.format_duration(track.duration)}**\n'
                 f'{Emojis.ExpansionEmojis.last} Requested by {track.metadata.author.mention}'
             )
 
@@ -491,7 +494,7 @@ class Player(magmatic.Player[Bot]):
         await self.play_next()
 
     @staticmethod
-    def _format_duration(duration: int | float) -> str:
+    def format_duration(duration: int | float) -> str:
         duration = int(duration)
         minutes, seconds = divmod(duration, 60)
         hours, minutes = divmod(minutes, 60)
@@ -519,8 +522,8 @@ class Player(magmatic.Player[Bot]):
         else:
             bar[circle_position - 1] = Emojis.MusicBarEmojis.M1
 
-        left = self._format_duration(self.position)
-        right = self._format_duration(track.duration)
+        left = self.format_duration(self.position)
+        right = self.format_duration(track.duration)
         return f'{left} {"".join(bar)} {right}'
 
     def build_embed(self, index: int, *, title: str = 'Now playing:', show_bar: bool = True) -> discord.Embed:
@@ -542,7 +545,7 @@ class Player(magmatic.Player[Bot]):
             embed.add_field(name='Author', value=author)
 
         if not track.is_stream():
-            embed.add_field(name='Duration', value=self._format_duration(track.duration))
+            embed.add_field(name='Duration', value=self.format_duration(track.duration))
 
         embed.add_field(name='Volume', value=f'{self.volume}%')
         embed.add_field(name='Requested By', value=track.metadata.author.mention)
@@ -589,6 +592,19 @@ def has_player() -> Callable[[Command], Command]:
     return commands.check(predicate)
 
 
+def track_playing() -> Callable[[Command], Command]:
+    def predicate(ctx: MusicContext) -> bool:
+        if not ctx.voice_client:
+            raise GenericCommandError('I must be in a voice channel to use this command.')
+
+        if not ctx.voice_client.queue.current:
+            raise GenericCommandError('There is no track playing.')
+
+        return True
+
+    return commands.check(predicate)
+
+
 def ensure_player() -> Callable[[Command], Command]:
     async def predicate(ctx: MusicContext) -> bool:
         if not ctx.voice_client:
@@ -605,6 +621,54 @@ def ensure_player() -> Callable[[Command], Command]:
 
 class SkipFlags(Flags):
     force: bool = store_true(short='f')
+
+
+def convert_position(argument: str, *, current_position: float, max_position: float) -> int:
+    factor = 1
+
+    if argument.startswith('+'):
+        base = current_position
+        argument = argument[1:]
+    elif argument.startswith('-'):
+        base = current_position
+        factor = -1
+        argument = argument[1:]
+    else:
+        base = 0
+
+    try:
+        return base + int(argument) * factor
+    except ValueError:
+        pass
+
+    if ':' not in argument:
+        raise commands.BadArgument(f'{argument!r} is not a valid position/seek value.')
+
+    count = argument.count(':')
+    if count > 2:
+        raise commands.BadArgument('Only HH:MM:SS or MM:SS are accepted formats for rich position values.')
+
+    elif count == 2:
+        hours, minutes, seconds = argument.split(':')
+    else:
+        hours = 0
+        minutes, _, seconds = argument.partition(':')
+
+    try:
+        seconds = int(hours) * 3600 + int(minutes) * 60 + int(seconds)
+    except ValueError:
+        raise commands.BadArgument(f'{argument!r} is not a valid position/seek value.')
+
+    if seconds < 0:
+        raise commands.BadArgument('Position/seek value may not be negative.')
+
+    new = base + seconds * factor
+    if new < 0:
+        raise commands.BadArgument('This seeks to a position before the start of the track.')
+    elif new > max_position:
+        raise commands.BadArgument('This seeks to a position beyond the end of the track.')
+
+    return int(new)
 
 
 class Music(Cog):
@@ -737,10 +801,10 @@ class Music(Cog):
         track: MusicTrack | magmatic.Playlist[MusicContext]
 
         if isinstance(track, magmatic.Playlist):
-            total = Player._format_duration(sum(t.duration for t in track))
+            total = Player.format_duration(sum(t.duration for t in track))
             message = f'{Emojis.youtube} Enqueued **{len(track):,}** tracks in **{track.name}** ({total})'
         else:
-            message = f'{Emojis.youtube} Enqueued **{track.title}** ({Player._format_duration(track.duration)})'
+            message = f'{Emojis.youtube} Enqueued **{track.title}** ({Player.format_duration(track.duration)})'
 
         if ctx.voice_client.is_dj(ctx.author) or not ctx.voice_client.started:
             view = discord.ui.View()
@@ -836,3 +900,69 @@ class Music(Cog):
             embed.description = 'Queue is not looping.'
 
         return Paginator(ctx, QueueFormatter(ctx.voice_client, embed)), REPLY
+
+    @dj_only()
+    @command(name='jump', aliases=('jump-to', 'skip-to', 'play-index'))
+    async def jump(self, ctx: MusicContext, index: int) -> CommandResponse:
+        """Jumps to the specific track at the given index in the queue.
+        The index of the track can be found by running `{PREFIX}queue`.
+
+        Arguments:
+        - `index`: The index of the track to jump to, for example `1` jumps to the first track.
+        """
+        if index < 1:
+            return 'Index must be greater than 0.', BAD_ARGUMENT
+
+        queue = ctx.voice_client.queue
+        should_play = queue.current is None
+        try:
+            queue[index - 1]
+        except IndexError:
+            return f'No track exists at index {index}.', BAD_ARGUMENT
+
+        queue.jump_to(index - 1)
+        duration = Player.format_duration(queue.current.duration)
+        if should_play:
+            await ctx.voice_client.play_next()
+
+        return f'Jumped to track at index {index}: **{queue.current.title}** ({duration})', REPLY
+
+    @dj_only()
+    @track_playing()
+    @command(name='seek', aliases=('seek-track', 'set-position', 'seek-to', 'ff', 'fast-forward', 'rewind', 'rw'))
+    async def seek(self, ctx: MusicContext, position: str) -> CommandResponse:
+        """Seeks to the given position in the currently playing track.
+
+        Invoking this command with **ff** or **fast-forward** will automatically prepend ``+`` to your argument.
+        Likewise, invoking with **rewind** or **rw** will automatically prepend ``-`` to your argument.
+
+        Examples:
+        - `{PREFIX}seek 1:00`: Seeks to 1 minute in the track.
+        - `{PREFIX}ff 10`: Fast-forwards the track by 10 seconds.
+        - `{PREFIX}seek +10`: Same as above. Fast-forwards the track by 10 seconds.
+        - `{PREFIX}rw 0:30`: Rewinds the track by 30 seconds.
+
+        Arguments:
+        - `position`: The position to seek to in the track. Can be an integer in seconds, or formatted in
+        MM:SS form, e.g. `2:30`. Prepend `+` or `-` to make this relative.
+        """
+        if ctx.invoked_with.lower() in ('ff', 'fast-forward'):
+            position = '+' + position
+
+        elif ctx.invoked_with.lower() in ('rewind', 'rw'):
+            position = '-' + position
+
+        track = ctx.voice_client.queue.current
+        position = convert_position(position, current_position=ctx.voice_client.position, max_position=track.duration)
+
+        if position == ctx.voice_client.position:
+            return 'Track position remained the same.', REPLY
+        elif position < ctx.voice_client.position:
+            emoji = '\u23ea'
+        else:
+            emoji = '\u23e9'
+
+        await ctx.voice_client.seek(position)
+        position = Player.format_duration(position)
+
+        return f'{emoji} Seeked current track to **{position}**.', REPLY
