@@ -37,8 +37,8 @@ __all__ = (
     'image_url_from_emoji',
 )
 
-EMOJI_REGEX: re.Pattern[str] = re.compile(r'<(a)?:([a-zA-Z0-9_]{2,32}):([0-9]{17,25})>')
-PLURALIZE_REGEX: re.Pattern[str] = re.compile(r'(?P<quantity>-?[0-9.,]+) (?P<thing>[a-zA-Z]+)\((?P<plural>i?e?s)\)')
+EMOJI_REGEX: re.Pattern[str] = re.compile(r'<(a)?:(\w{2,32}):(\d{17,25})>')
+PLURALIZE_REGEX: re.Pattern[str] = re.compile(r'(?P<quantity>-?[\d.,]+) (?P<thing>[a-zA-Z ]+?)\((?P<plural>i?e?s)\)')
 
 
 # This exists for type checkers

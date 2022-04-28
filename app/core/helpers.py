@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import re
 from functools import wraps
 from typing import Any, AsyncIterable, Awaitable, Callable, Iterable, ParamSpec, TYPE_CHECKING, TypeAlias, TypeVar
 
@@ -40,6 +41,8 @@ BAD_ARGUMENT = sentinel('BAD_ARGUMENT', repr='BAD_ARGUMENT')
 ERROR = sentinel('ERROR', repr='ERROR')
 
 MISSING: Any = sentinel('MISSING', bool=False, repr='MISSING')  # type: ignore
+
+HYPERLINK_REGEX: re.Pattern[str] = re.compile(r'(?<!\\)\[([^]]+)]\([^)]+\)')
 
 
 class Param:
@@ -120,6 +123,9 @@ async def process_message(ctx: Context, payload: Any) -> discord.Message | None:
         else:
             kwargs['content'] = str(part)
 
+    if kwargs.get('content') and not ctx.interaction:
+        kwargs['content'] = HYPERLINK_REGEX.sub(r'\1', kwargs['content'])
+
     if bad_argument:
         raise commands.BadArgument(kwargs['content'])
 
@@ -163,7 +169,7 @@ def _resolve_command_kwargs(
     usage: str = MISSING,
     brief: str = MISSING,
     help: str = MISSING,
-) -> dict[str, Any]:
+) -> dict[str, Any]:  # sourcery skip: compare-via-equals
     kwargs = {'cls': cls}
 
     if name is not MISSING:

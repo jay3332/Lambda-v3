@@ -8,12 +8,13 @@ from typing import Any, Callable, ClassVar, Coroutine, Iterator, TYPE_CHECKING, 
 
 import discord
 import magmatic
+from discord.app_commands import Choice, autocomplete, describe
 from discord.ext import commands
 
 from app.core import BAD_ARGUMENT, Bot, Cog, ERROR, Flags, MISSING, REPLY, command, store_true
 from app.core.helpers import GenericCommandError
-from app.util import converter
-from app.util.common import humanize_list, ordinal
+from app.util import converter, cutoff
+from app.util.common import expansion_list, humanize_list, ordinal, pluralize
 from app.util.pagination import Formatter, Paginator
 from app.util.views import ConfirmationView
 from config import Colors, Emojis, lavalink_nodes
@@ -73,6 +74,9 @@ class VoteSkip(discord.ui.Button):
             await self.player.ctx.send(
                 f'[Music] {interaction.user.mention} casted the winning vote to skip the current track, so I\'ve skipped the track.',
                 allowed_mentions=discord.AllowedMentions.none(),
+            )
+            await interaction.message.edit(
+                view=self.view,
             )
             return
 
@@ -169,6 +173,12 @@ class DJControlsView(discord.ui.View):
         magmatic.LoopType.none: '\U0001f6ab',
         magmatic.LoopType.queue: '\U0001f501',
         magmatic.LoopType.track: '\U0001f502',
+    }
+
+    FILTER_NAMES: ClassVar[dict[Type[magmatic.BaseFilter], str]] = {
+        magmatic.TimescaleFilter: 'Timescale',
+        magmatic.VibratoFilter: 'Vibrato',
+        magmatic.TremoloFilter: 'Tremolo',
     }
 
     def __init__(self, player: Player, interaction: discord.Interaction) -> None:
@@ -297,10 +307,6 @@ class DJControlsView(discord.ui.View):
 
 
 class DJControlsEntrypoint(discord.ui.Button):
-    FILTER_NAMES: ClassVar[dict[Type[magmatic.BaseFilter], str]] = {
-        magmatic.TimescaleFilter: 'Timescale',
-    }
-
     def __init__(self, player: Player) -> None:
         self.player: Player = player
 
@@ -465,7 +471,7 @@ class Player(magmatic.Player[Bot]):
 
         await self.ctx.send(
             f'[Music] {Emojis.youtube} Now playing: **{track.title}**',
-            embed=self.build_embed(self.queue.current_index),
+            embed=self.build_embed(self.queue.current_index, show_bar=False),
             view=NowPlayingView(self, track),
         )
 
@@ -749,7 +755,8 @@ class Music(Cog):
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
-    @command(name='join', aliases=('connect', 'j', 'summon', 'move-to'))
+    @command(name='join', aliases=('connect', 'j', 'summon', 'move-to'), hybrid=True)
+    @describe(channel='The voice channel to join.')
     async def join(self, ctx: MusicContext, channel: discord.VoiceChannel = None) -> CommandResponse:
         """Connects or moves the Lambda music player to the specified voice channel.
 
@@ -781,7 +788,7 @@ class Music(Cog):
                 return f'\U0001f50a Joined {channel.mention}', REPLY
 
     @dj_only()
-    @command(name='leave', aliases=('disconnect', 'dis', 'go-away'))
+    @command(name='leave', aliases=('disconnect', 'dis', 'go-away'), hybrid=True)
     async def leave(self, ctx: MusicContext) -> CommandResponse:
         """Disconnects the Lambda music player from the voice channel."""
         if ctx.voice_client is None:
@@ -794,11 +801,41 @@ class Music(Cog):
         finally:
             return f'\U0001f50a Disconnected from {channel.mention}.', REPLY
 
+    async def play_autocomplete(self, _interaction: discord.Interaction, value: str) -> list[Choice]:
+        choices = [Choice(name=repr(value), value=value)]
+        node = self.pool.get_node()
+
+        try:
+            results = await node.search_tracks(value, limit=10, source=magmatic.Source.youtube)
+        except magmatic.NoMatches:
+            return choices
+
+        choices.extend(
+            Choice(
+                name=cutoff(
+                    f'{result.title} - {result.author} ({Player.format_duration(result.duration)})',
+                    max_length=100,
+                    exact=True,
+                ),
+                value=result.uri,
+            )
+            for result in results
+        )
+
+        return choices
+
     @ensure_player()
-    @command(name='play', aliases=('p', 'enqueue'))
+    @command(name='play', aliases=('p', 'enqueue'), hybrid=True)
+    @describe(track='The name of the track to play. Can be a YouTube URL or a search query.')
+    @autocomplete(track=play_autocomplete)  # type: ignore
     async def play(self, ctx: MusicContext, *, track: magmatic.YoutubeTrack[TrackContext]) -> CommandResponse:  # type: ignore
-        """Plays the specified track. If a track is already playing, it is added to the queue."""
+        """Plays the specified track. If a track is already playing, it is added to the queue.
+
+        Arguments:
+        - `track`: The name of the track to play. Can be the title of a YouTube video, a URL, etc.
+        """
         track: MusicTrack | magmatic.Playlist[MusicContext]
+        track.metadata = ctx  # For autocomplete
 
         if isinstance(track, magmatic.Playlist):
             total = Player.format_duration(sum(t.duration for t in track))
@@ -834,8 +871,57 @@ class Music(Cog):
         )
         return message, embed, view, REPLY
 
+    @command(name='search', aliases=('search-track', 'sch'), hybrid=True)
+    @describe(query='The search query to use.')
+    async def search(self, ctx: MusicContext, *, query: str) -> CommandResponse:
+        # sourcery skip: merge-list-appends-into-extend
+        """Searches for multiple music tracks given your query.
+        This will search on both YouTube and SoundCloud.
+
+        This will not work with direct URLs, use `{PREFIX}play <url>` directly instead.
+
+        Arguments:
+        - `query`: The query to search for.
+        """
+        # Lots of boilerplate here, CBA to fix
+        node = self.pool.get_node()
+        try:
+            youtube = await node.search_tracks(query, source=magmatic.Source.youtube, limit=10, metadata=ctx, strict=True)
+        except magmatic.NoMatches:
+            youtube = []
+        # try:
+        #     soundcloud = await node.search_tracks(query, source=magmatic.Source.soundcloud, limit=5, metadata=ctx, strict=True)
+        # except magmatic.NoMatches:
+        #     soundcloud = []
+        soundcloud = []  # TODO: need to go to sleep so leave this as blank
+
+        if not youtube and not soundcloud:
+            return 'No tracks found with that query.', ERROR
+
+        result = []
+        if youtube:
+            header = pluralize(f'{Emojis.youtube} **{len(youtube)} YouTube result(s)**')
+            header += '\n' + expansion_list(
+                f'[{track.title}]({track.uri}) ({Player.format_duration(track.duration)})\n'
+                f'Author: {track.author}'
+                for track in youtube
+            )
+            result.append(header)
+
+        if soundcloud:
+            header = pluralize(f'{Emojis.soundcloud} **{len(soundcloud)} SoundCloud result(s)**')
+            header += '\n' + expansion_list(
+                f'[{track.title}]({track.uri}) ({Player.format_duration(track.duration)})\n'
+                f'Author: {track.author}'
+                for track in soundcloud
+            )
+            result.append(header)
+
+        result = '\n\n'.join(result)
+        return result, REPLY
+
     @has_player()
-    @command(name='now-playing', aliases=('np', 'current', 'current-song', 'playing', 'now'))
+    @command(name='now-playing', aliases=('np', 'current', 'current-song', 'playing', 'now'), hybrid=True)
     async def now_playing(self, ctx: MusicContext) -> CommandResponse:
         """Shows information about the currently playing track."""
         embed = ctx.voice_client.build_embed(
@@ -884,7 +970,7 @@ class Music(Cog):
             return f'Skipped **{title}**.', REPLY
 
     @has_player()
-    @command(name='queue', aliases=('q', 'upcoming'))
+    @command(name='queue', aliases=('q', 'upcoming'), hybrid=True)
     async def queue(self, ctx: MusicContext) -> CommandResponse:
         """Shows the player's music queue."""
         queue = ctx.voice_client.queue
@@ -902,7 +988,8 @@ class Music(Cog):
         return Paginator(ctx, QueueFormatter(ctx.voice_client, embed)), REPLY
 
     @dj_only()
-    @command(name='jump', aliases=('jump-to', 'skip-to', 'play-index'))
+    @command(name='jump', aliases=('jump-to', 'skip-to', 'play-index'), hybrid=True)
+    @describe(index='The index of the track to jump to.')
     async def jump(self, ctx: MusicContext, index: int) -> CommandResponse:
         """Jumps to the specific track at the given index in the queue.
         The index of the track can be found by running `{PREFIX}queue`.
@@ -914,16 +1001,14 @@ class Music(Cog):
             return 'Index must be greater than 0.', BAD_ARGUMENT
 
         queue = ctx.voice_client.queue
-        should_play = queue.current is None
         try:
             queue[index - 1]
         except IndexError:
             return f'No track exists at index {index}.', BAD_ARGUMENT
 
-        queue.jump_to(index - 1)
+        queue.jump_to(index - 2)
         duration = Player.format_duration(queue.current.duration)
-        if should_play:
-            await ctx.voice_client.play_next()
+        await ctx.voice_client.play_next()
 
         return f'Jumped to track at index {index}: **{queue.current.title}** ({duration})', REPLY
 
