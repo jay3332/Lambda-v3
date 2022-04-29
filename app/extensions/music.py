@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import random
 from collections import defaultdict
 from copy import deepcopy
 from math import ceil
@@ -215,9 +216,9 @@ class DJControlsView(discord.ui.View):
                 continue
 
             items = ', '.join(f'{attr.title()}: {value}' for attr, value in entity._BaseFilter__walk_repr_attributes())  # type: ignore
-            result.append(f'\u2022 **{name}:** {items}' if items else f'\u2022 **{name}**')
+            result.append(f'**{name}:** {items}' if items else f'\u2022 **{name}**')
 
-        return '\n'.join(result)
+        return expansion_list(result)
 
     def build_embed(self) -> discord.Embed:
         ctx = self.player.ctx
@@ -349,6 +350,43 @@ class NowPlayingView(discord.ui.View):
         return True
 
 
+class SearchResultSelect(discord.ui.Select):
+    def __init__(self, ctx: MusicContext, player: Player, tracks: list[magmatic.Track[MusicContext]]) -> None:
+        super().__init__(
+            placeholder='Choose a track (or multiple) to play...',
+            options=[
+                discord.SelectOption(
+                    label=cutoff(track.title, max_length=50, exact=True),
+                    description=f'{Player.format_duration(track.duration)} \u2014 {(cutoff(track.author, max_length=50))}',
+                    value=str(i),
+                    emoji=Emojis.soundcloud if track.source is magmatic.LoadSource.soundcloud else Emojis.youtube,
+                )
+                for i, track in enumerate(tracks)
+            ],
+            min_values=1,
+            max_values=len(tracks),
+        )
+        self.ctx: MusicContext = ctx
+        self.player: Player = player
+        self.mapping = tracks
+
+    async def callback(self, interaction: discord.Interaction) -> Any:
+        tracks = [self.mapping[int(value)] for value in self.values]
+        if len(tracks) > 1:
+            track = magmatic.Playlist(tracks, data={
+                'name': 'selected tracks',
+                'selectedTrack': -1,
+            }, metadata=self.ctx)
+        else:
+            track = tracks[0]
+
+        self.disabled = True
+        await interaction.response.edit_message(view=self.view)
+
+        self.ctx.interaction = interaction
+        await self.ctx.invoke(self.ctx.cog.play, track=track)  # type: ignore
+
+
 class QueueFormatter(Formatter[magmatic.Track['MusicContext']]):
     def __init__(self, player: Player, embed: discord.Embed) -> None:
         super().__init__(list(player.queue), per_page=4)
@@ -378,7 +416,7 @@ class QueueFormatter(Formatter[magmatic.Track['MusicContext']]):
         if up_next := self.queue.up_next:
             embed.description += f'\n\n*Up next: [{escape(up_next.title)}]({up_next.uri})* ({Player.format_duration(up_next.duration)})'
 
-        for i, track in enumerate(entries, start=paginator.current_page * 5):
+        for i, track in enumerate(entries, start=paginator.current_page * self.per_page):
             title = f'**{i + 1}.** [{escape(track.title)}]({track.uri})'
 
             if i == self.queue.current_index:
@@ -889,11 +927,10 @@ class Music(Cog):
             youtube = await node.search_tracks(query, source=magmatic.Source.youtube, limit=10, metadata=ctx, strict=True)
         except magmatic.NoMatches:
             youtube = []
-        # try:
-        #     soundcloud = await node.search_tracks(query, source=magmatic.Source.soundcloud, limit=5, metadata=ctx, strict=True)
-        # except magmatic.NoMatches:
-        #     soundcloud = []
-        soundcloud = []  # TODO: need to go to sleep so leave this as blank
+        try:
+            soundcloud = await node.search_tracks(query, source=magmatic.Source.soundcloud, limit=5, metadata=ctx, strict=True)
+        except magmatic.NoMatches:
+            soundcloud = []
 
         if not youtube and not soundcloud:
             return 'No tracks found with that query.', ERROR
@@ -902,8 +939,7 @@ class Music(Cog):
         if youtube:
             header = pluralize(f'{Emojis.youtube} **{len(youtube)} YouTube result(s)**')
             header += '\n' + expansion_list(
-                f'[{track.title}]({track.uri}) ({Player.format_duration(track.duration)})\n'
-                f'Author: {track.author}'
+                f'[{track.title}]({track.uri}) ({Player.format_duration(track.duration)})'
                 for track in youtube
             )
             result.append(header)
@@ -911,14 +947,19 @@ class Music(Cog):
         if soundcloud:
             header = pluralize(f'{Emojis.soundcloud} **{len(soundcloud)} SoundCloud result(s)**')
             header += '\n' + expansion_list(
-                f'[{track.title}]({track.uri}) ({Player.format_duration(track.duration)})\n'
-                f'Author: {track.author}'
+                f'[{track.title}]({track.uri}) ({Player.format_duration(track.duration)})'
                 for track in soundcloud
             )
             result.append(header)
 
         result = '\n\n'.join(result)
-        return result, REPLY
+        if ctx.voice_client:
+            view = discord.ui.View()
+            view.add_item(SearchResultSelect(ctx, ctx.voice_client, youtube + soundcloud))
+        else:
+            view = None
+
+        return result, view, REPLY
 
     @has_player()
     @command(name='now-playing', aliases=('np', 'current', 'current-song', 'playing', 'now'), hybrid=True)
@@ -979,11 +1020,12 @@ class Music(Cog):
         embed.set_author(name=f'Music Queue: {ctx.guild.name}', icon_url=ctx.guild.icon)
         embed.set_footer(text=f'{len(queue)} tracks in queue.')
 
+        embed.description = f'Total duration: {Player.format_duration(sum(track.duration for track in queue))}'
         if queue.loop_type is not magmatic.LoopType.none:
             emoji = DJControlsView.LOOP_EMOJIS[queue.loop_type]
-            embed.description = f'Looping the {emoji} **{queue.loop_type.name.lower()}**'
+            embed.description += f' | Looping the {emoji} **{queue.loop_type.name.lower()}**'
         else:
-            embed.description = 'Queue is not looping.'
+            embed.description += ' | Queue is not looping.'
 
         return Paginator(ctx, QueueFormatter(ctx.voice_client, embed)), REPLY
 
@@ -1006,11 +1048,23 @@ class Music(Cog):
         except IndexError:
             return f'No track exists at index {index}.', BAD_ARGUMENT
 
-        queue.jump_to(index - 2)
+        if index > 1:
+            queue.jump_to(index - 2)
+        else:
+            queue._index = index - 2
         duration = Player.format_duration(queue.current.duration)
         await ctx.voice_client.play_next()
 
         return f'Jumped to track at index {index}: **{queue.current.title}** ({duration})', REPLY
+
+    # TODO: this can be a button on Music Controller
+    @dj_only()
+    @command(name='shuffle', aliases=('shuffle-queue', 'shuf'), hybrid=True)
+    async def shuffle(self, ctx: MusicContext) -> CommandResponse:
+        """Shuffles the player's music queue."""
+        # TODO: [magmatic] add queue.shuffle() and make _InternalQueue protocol support MutableSequence
+        random.shuffle(ctx.voice_client.queue.queue)  # type: ignore
+        return '\U0001f500 Shuffled the queue.', REPLY
 
     @dj_only()
     @track_playing()

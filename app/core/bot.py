@@ -286,10 +286,12 @@ class Bot(commands.Bot):
             if not ctx.guild and ctx.channel.permissions_for(ctx.me).add_reactions:
                 return await ctx.message.add_reaction('\U000023f3')
 
-            return await ctx.send('You are currently on cooldown.', reference=ctx.message, delete_after=15)
+            return await ctx.send(
+                'You are currently on cooldown.', reference=ctx.message, delete_after=15, ephemeral=True,
+            )
 
         if isinstance(error, (commands.MaxConcurrencyReached, commands.CheckFailure)):
-            return await ctx.send(error, reference=ctx.message, delete_after=15)
+            return await ctx.send(error, reference=ctx.message, delete_after=15, ephemeral=True)
 
         if isinstance(error, (commands.MissingPermissions, commands.BotMissingPermissions)):
             if isinstance(error, commands.MissingPermissions):
@@ -302,7 +304,7 @@ class Bot(commands.Bot):
 
             permissions = ctx.channel.permissions_for(ctx.me)
             if ctx.guild and (permissions.administrator or permissions.send_messages and permissions.read_message_history):
-                await ctx.send(message, reference=ctx.message)
+                await ctx.send(message, reference=ctx.message, ephemeral=True)
                 return
 
             if permissions.administrator or permissions.add_reactions:
@@ -319,7 +321,7 @@ class Bot(commands.Bot):
 
         if isinstance(error, commands.BadArgument):
             if isinstance(error, GenericCommandError):
-                return await ctx.send(error, reference=ctx.message, delete_after=15)
+                return await ctx.send(error, reference=ctx.message, delete_after=15, ephemeral=True)
 
             param = ctx.current_parameter
 
@@ -389,10 +391,10 @@ class Bot(commands.Bot):
             builder.append(', is this correct?')
 
         ansi = builder.ensure_codeblock().dynamic(ctx)
-        await ctx.send(f'Could not parse your command input properly:\n{ansi}', reference=ctx.message)
+        await ctx.send(f'Could not parse your command input properly:\n{ansi}', reference=ctx.message, ephemeral=True)
 
     async def close_web_app(self) -> None:
-        """Close the Quart web application."""
+        """Closes the Quart web application."""
         if self._web_run_task is not None:
             await self.web.shutdown()
 
