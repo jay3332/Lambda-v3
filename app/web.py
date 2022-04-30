@@ -432,12 +432,23 @@ ARGUMENT_REGEX: re.Pattern[str] = re.compile(r'- `([\w-]+)(?: [^`]+)?` ?: ?(.+)'
 
 
 def _serialize_command(command: Command) -> JsonObject:
+    convert = command.permission_spec.permission_as_str
     result = {
         'name': command.qualified_name,
+        'aliases': list(command.aliases),
         'description': command.short_doc,
         'arguments': {},
         'flags': {},
         'signature': [],
+        'cooldown': command.cooldown and {
+            'rate': command.cooldown.rate,
+            'per': command.cooldown.per,
+            'type': command._buckets.type,
+        },
+        'permissions': {
+            'user': [convert(p) for p in command.user_permissions],
+            'bot': [convert(p) for p in command.bot_permissions],
+        },
     }
     body = command.help
     try:
@@ -458,7 +469,7 @@ def _serialize_command(command: Command) -> JsonObject:
             entity = flags if param.is_flag() else args
             entity[name.removeprefix('--')] = description
 
-    signature = result['signature']
+    signature: list[JsonObject] = result['signature']
     for name, info in command.param_info.items():
         default = (
             None
