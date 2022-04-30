@@ -443,7 +443,7 @@ def _serialize_command(command: Command) -> JsonObject:
         'cooldown': command.cooldown and {
             'rate': command.cooldown.rate,
             'per': command.cooldown.per,
-            'type': command._buckets.type,
+            'type': command._buckets.type.name,  # type: ignore
         },
         'permissions': {
             'user': [convert(p) for p in command.permission_spec.user],
