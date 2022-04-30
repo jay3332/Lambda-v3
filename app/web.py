@@ -503,7 +503,7 @@ async def command_info() -> JsonObject:
             for cog in app.bot.cogs.values() if not getattr(cog, '__hidden__', True)
         }
 
-        if _cached_commands_task.done() or _cached_commands_task is None:
+        if _cached_commands_task is None or _cached_commands_task.done():
             _cached_commands_task.cancel()  # type: ignore
             _cached_commands_task = app.bot.loop.create_task(_clear_cached_commands())
 
