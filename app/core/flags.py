@@ -273,6 +273,7 @@ class FlagMeta(type, Generic[T]):
 
     def is_flag_starter(cls, sample: str) -> bool:
         """Return whether the sample starts with a valid flag."""
+        sample, *_ = sample.split(' ', maxsplit=1)
         sample, _, _ = sample.lstrip().replace('\u2014', '--').partition('=')
 
         if not sample.startswith('-'):

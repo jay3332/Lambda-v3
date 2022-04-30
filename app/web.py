@@ -428,7 +428,7 @@ async def rank_card(user_id: int) -> JsonObject | tuple[JsonObject, int]:
     }
 
 
-ARGUMENT_REGEX: re.Pattern[str] = re.compile(r'- `([\w-]+)` ?: ?(.+)')
+ARGUMENT_REGEX: re.Pattern[str] = re.compile(r'- `([\w-]+)(?: [^`]+)?` ?: ?(.+)')
 
 
 def _serialize_command(command: Command) -> JsonObject:

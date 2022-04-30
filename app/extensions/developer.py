@@ -4,21 +4,31 @@ import json
 import platform
 import subprocess
 from collections import defaultdict
+from io import StringIO
 from tempfile import NamedTemporaryFile
 from textwrap import dedent
-from typing import ClassVar
+from typing import Annotated, ClassVar
 
 import discord
 from discord.app_commands import Choice, autocomplete, describe
+from discord.ext.commands import Range
 from jishaku.codeblocks import codeblock_converter
 
-from app.core import BAD_ARGUMENT, Cog, Context, EDIT, REPLY, command, cooldown, group
+from app.core import BAD_ARGUMENT, Cog, Context, EDIT, Flags, REPLY, command, cooldown, flag, group, store_true
 from app.core.helpers import user_max_concurrency
 from app.features.docs import DocumentationManager, DocumentationSource
 from app.util import AnsiColor, AnsiStringBuilder
-from app.util.common import executor_function
+from app.util.common import executor_function, humanize_size
 from app.util.types import CommandResponse, JsonObject
+from app.util.views import LinkView
 from config import Emojis
+
+
+class PrettyPrintFlags(Flags):
+    indent: Range[int, 0, 16] = flag(short='i', alias='indents', default=4)
+    sort_keys: bool = store_true(short='s', alias='sort')
+    ascii: bool = store_true(short='a', aliases=('ensure-ascii', 'escape', 'ascii-only'))
+    paste: bool = store_true(short='p')
 
 
 class Developer(Cog):
@@ -171,3 +181,69 @@ class Developer(Cog):
             out += '\n' + raw_output_builder.dynamic(ctx)
 
         yield out, EDIT
+
+    PRETTY_PRINT_MAX_SIZE: ClassVar[int] = 1024 * 1024 * 8  # 8 MB
+
+    @command('pretty-print', aliases={'pp', 'prettyprint', 'pprint', 'beautify'})
+    async def pretty_print(
+        self,
+        ctx: Context,
+        *,
+        json_content: Annotated[tuple[str, str], codeblock_converter] = None,
+        flags: PrettyPrintFlags,
+    ) -> CommandResponse:
+        """Pretty prints the given JSON content.
+
+        Arguments:
+        - `json_content`: The JSON to pretty-print. You can also pass in a JSON file instead.
+
+        Flags:
+        - `--indent <indent_level>`: The indent level to use. Defaults to ``4``.
+        - `--sort-keys`: Whether to sort the keys of the JSON. Defaults to ``False``.
+        - `--ascii`: Whether to escape non-ASCII characters. Defaults to ``False``.
+        - `--paste`: Whether to return the output as a link to a paste-bin instead of a file if it is too long. Defaults to ``False``.
+        """
+        if not json_content:
+            if attachments := ctx.message.attachments:
+                attachment = attachments[0]
+            elif ctx.message.reference and ctx.message.reference.resolved:
+                attachment = ctx.message.reference.resolved.attachments[0]
+            else:
+                return 'No JSON content or attachment given.', BAD_ARGUMENT
+
+            filename = attachment.filename.casefold()
+
+            if not any(filename.endswith(suffix) for suffix in ('.txt', '.json')):
+                _, _, ext = filename.rpartition('.')
+                ext = ext or 'unknown'
+
+                return f'Expected a raw string, JSON, or TXT file, got {ext!r} instead.', BAD_ARGUMENT
+
+            if attachment.size > self.PRETTY_PRINT_MAX_SIZE:
+                return f'Attachment is too large. ({humanize_size(attachment.size)} > {humanize_size(self.PRETTY_PRINT_MAX_SIZE)})', BAD_ARGUMENT
+
+            content = await attachment.read()
+            try:
+                content = content.decode('utf-8')
+            except UnicodeDecodeError:
+                return 'The attachment is not a valid UTF-8 file.', BAD_ARGUMENT
+        else:
+            _, content = json_content
+
+        try:
+            json_content = json.loads(content.strip())
+        except json.JSONDecodeError:
+            return 'The JSON content is not valid.', BAD_ARGUMENT
+
+        res = json.dumps(json_content, indent=flags.indent, sort_keys=flags.sort_keys, ensure_ascii=flags.ascii)
+        if len(res) > 1989:
+            if flags.paste:
+                paste = await ctx.bot.cdn.paste(res, extension='json')
+                res = paste.paste_url
+
+                return f'<{res}>', LinkView({'Go to Paste': res}), REPLY
+
+            with StringIO(res) as fp:
+                return discord.File(fp, filename=f'pretty_print_{ctx.author.id}.json'), REPLY  # type: ignore
+
+        return f'```json\n{res}```', REPLY
