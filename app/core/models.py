@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 from functools import wraps
 from typing import (
     Any,
@@ -108,6 +109,21 @@ class PermissionSpec(NamedTuple):
         return True
 
 
+class ParamInfo(NamedTuple):
+    """Parameter information."""
+    name: str
+    required: bool
+    default: Any
+    greedy: bool
+    choices: list[str | int | bool] | None
+    show_default: bool
+    flag: bool
+    store_true: bool
+
+    def is_flag(self) -> bool:
+        return self.flag
+
+
 @discord.utils.copy_doc(commands.Command)
 class Command(commands.Command):
     def __init__(self, func: AsyncCallable[..., Any], **kwargs: Any) -> None:
@@ -199,6 +215,87 @@ class Command(commands.Command):
         """
         return self._permissions
 
+    @staticmethod
+    def _disect_param(param: commands.Parameter) -> tuple:
+        greedy = isinstance(param.annotation, commands.Greedy)
+        optional = False  # postpone evaluation of if it's an optional argument
+
+        # for typing.Literal[...], typing.Optional[typing.Literal[...]], and Greedy[typing.Literal[...]], the
+        # parameter signature is a literal list of it's values
+        annotation = param.annotation.converter if greedy else param.annotation
+        origin = getattr(annotation, '__origin__', None)
+        if not greedy and origin is Union:
+            none_cls = type(None)
+            union_args = annotation.__args__
+            optional = union_args[-1] is none_cls
+
+            if len(union_args) == 2 and optional:
+                annotation = union_args[0]
+                origin = getattr(annotation, '__origin__', None)
+
+        return annotation, greedy, optional, origin
+
+    @property
+    def param_info(self) -> OrderedDict[str, ParamInfo]:
+        """Returns a dict mapping parameter names to their rich info."""
+        result = OrderedDict()
+        params = self.clean_params
+        if not params:
+            return result
+
+        for name, param in params.items():
+            annotation, greedy, optional, origin = self._disect_param(param)
+            default = param.default
+
+            if isinstance(annotation, FlagMeta) and self.custom_flags:
+                for flag in self.custom_flags.walk_flags():
+                    optional = not flag.required
+                    name = '--' + flag.name
+                    default = param.empty
+
+                    if not flag.store_true and flag.default or flag.default is False:
+                        default = flag.default
+                        optional = True
+
+                    result[name] = ParamInfo(
+                        name=name,
+                        required=not optional,
+                        show_default=bool(flag.default) or flag.default is False,
+                        default=default,
+                        choices=None,
+                        greedy=greedy,
+                        flag=True,
+                        store_true=flag.store_true,
+                    )
+
+                continue
+
+            choices = annotation.__args__ if origin is Literal else None
+
+            if default is not param.empty:
+                show_default = bool(default) if isinstance(default, str) else default is not None
+                optional = True
+            else:
+                show_default = False
+
+            if param.kind is param.VAR_POSITIONAL:
+                optional = not self.require_var_positional
+            elif param.default is param.empty:
+                optional = optional or greedy
+
+            result[name] = ParamInfo(
+                name=name,
+                required=not optional,
+                show_default=show_default,
+                default=default,
+                choices=choices,
+                greedy=greedy,
+                flag=False,
+                store_true=False,
+            )
+
+        return result
+
     @property
     def ansi_signature(self) -> AnsiStringBuilder:  # sourcery no-metrics
         """Returns an ANSI builder for the signature of this command."""
@@ -211,21 +308,7 @@ class Command(commands.Command):
             return result
 
         for name, param in params.items():
-            greedy = isinstance(param.annotation, commands.Greedy)
-            optional = False  # postpone evaluation of if it's an optional argument
-
-            # for typing.Literal[...], typing.Optional[typing.Literal[...]], and Greedy[typing.Literal[...]], the
-            # parameter signature is a literal list of it's values
-            annotation = param.annotation.converter if greedy else param.annotation
-            origin = getattr(annotation, '__origin__', None)
-            if not greedy and origin is Union:
-                none_cls = type(None)
-                union_args = annotation.__args__
-                optional = union_args[-1] is none_cls
-
-                if len(union_args) == 2 and optional:
-                    annotation = union_args[0]
-                    origin = getattr(annotation, '__origin__', None)
+            annotation, greedy, optional, origin = self._disect_param(param)
 
             if isinstance(annotation, FlagMeta) and self.custom_flags:
                 for flag in self.custom_flags.walk_flags():

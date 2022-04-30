@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
 import os
 import re
 import urllib.parse
@@ -10,10 +12,11 @@ from typing import Callable, Final, ParamSpec, TYPE_CHECKING, TypeVar
 from discord.http import Route
 from quart import Quart, Request, Response, jsonify, make_response, request
 
+from app.features.custom_commands import CustomCommand
 from config import client_secret
 
 if TYPE_CHECKING:
-    from app.core import Bot
+    from app.core import Bot, Command
     from app.features.leveling.core import LevelingManager
     from app.features.leveling.rank_card import RankCard
     from app.util.types import JsonObject
@@ -423,6 +426,88 @@ async def rank_card(user_id: int) -> JsonObject | tuple[JsonObject, int]:
         'success': True,
         'updated': _rank_card_to_json(record),
     }
+
+
+ARGUMENT_REGEX: re.Pattern[str] = re.compile(r'- `([\w-]+)` ?: ?(.+)')
+
+
+def _serialize_command(command: Command) -> JsonObject:
+    result = {
+        'name': command.qualified_name,
+        'description': command.short_doc,
+        'arguments': {},
+        'flags': {},
+        'signature': [],
+    }
+    body = command.help
+    try:
+        body = body[body.rindex('Arguments:\n') + 11:]
+    except ValueError:
+        pass
+    else:
+        arguments = ARGUMENT_REGEX.findall(body)
+
+        args = result['arguments']
+        flags = result['flags']
+        for name, description in arguments:
+            try:
+                param = command.param_info[name]
+            except KeyError:
+                continue
+
+            entity = flags if param.is_flag() else args
+            entity[name.removeprefix('--')] = description
+
+    signature = result['signature']
+    for name, info in command.param_info.items():
+        default = (
+            None
+            if info.default is inspect.Parameter.empty
+            else None
+            if info is None
+            else repr(info.default)
+        )
+        signature.append({
+            'name': name,
+            'required': info.required,
+            'default': default,
+            'choices': info.choices and [str(c) for c in info.choices],
+            'store_true': info.store_true,
+        })
+
+    return result
+
+
+# very quick fix, code quality here doesn't really matter though
+_cached_commands: JsonObject | None = None
+_cached_commands_task: asyncio.Task | None = None
+
+
+async def _clear_cached_commands() -> None:
+    global _cached_commands
+    await asyncio.sleep(120)
+    _cached_commands = None
+
+
+@app.route('/commands', methods=['GET', 'OPTIONS'])
+@handle_cors
+async def command_info() -> JsonObject:
+    global _cached_commands, _cached_commands_task
+
+    if _cached_commands is None:
+        _cached_commands = {
+            cog.qualified_name: [
+                _serialize_command(command) for command in cog.walk_commands()
+                if not isinstance(command, CustomCommand) and not command.hidden
+            ]
+            for cog in app.bot.cogs.values() if not getattr(cog, '__hidden__', True)
+        }
+
+        if _cached_commands_task.done() or _cached_commands_task is None:
+            _cached_commands_task.cancel()  # type: ignore
+            _cached_commands_task = app.bot.loop.create_task(_clear_cached_commands())
+
+    return _cached_commands
 
 
 @app.after_request
