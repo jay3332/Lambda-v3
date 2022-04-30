@@ -206,7 +206,7 @@ class Developer(Cog):
         if not json_content:
             if attachments := ctx.message.attachments:
                 attachment = attachments[0]
-            elif ctx.message.reference and ctx.message.reference.resolved:
+            elif ctx.message.reference and ctx.message.reference.resolved and ctx.message.reference.resolved.attachments:
                 attachment = ctx.message.reference.resolved.attachments[0]
             else:
                 return 'No JSON content or attachment given.', BAD_ARGUMENT
