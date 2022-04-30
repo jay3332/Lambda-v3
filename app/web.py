@@ -446,8 +446,8 @@ def _serialize_command(command: Command) -> JsonObject:
             'type': command._buckets.type,
         },
         'permissions': {
-            'user': [convert(p) for p in command.user_permissions],
-            'bot': [convert(p) for p in command.bot_permissions],
+            'user': [convert(p) for p in command.permission_spec.user],
+            'bot': [convert(p) for p in command.permission_spec.bot],
         },
     }
     body = command.help
