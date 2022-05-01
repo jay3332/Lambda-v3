@@ -13,6 +13,7 @@ from discord.http import Route
 from quart import Quart, Request, Response, jsonify, make_response, request
 
 from app.features.custom_commands import CustomCommand
+from app.util import humanize_duration
 from config import client_secret
 
 if TYPE_CHECKING:
@@ -443,6 +444,7 @@ def _serialize_command(command: Command) -> JsonObject:
         'cooldown': command.cooldown and {
             'rate': command.cooldown.rate,
             'per': command.cooldown.per,
+            'per_humanized': humanize_duration(command.cooldown.per),
             'type': command._buckets.type.name,  # type: ignore
         },
         'permissions': {
