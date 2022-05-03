@@ -92,15 +92,18 @@ class OCRRenderer:
 
             img = ImageOps.exif_transpose(img)
 
-            match self.data['orientation']:
+            match self.data['orientation'].lower():
                 case 'down':
                     img = img.transpose(Image.ROTATE_180)
+                    undo = Image.ROTATE_180
                 case 'left':
                     img = img.transpose(Image.ROTATE_270)
+                    undo = Image.ROTATE_90
                 case 'right':
                     img = img.transpose(Image.ROTATE_90)
+                    undo = Image.ROTATE_270
                 case _:
-                    pass
+                    undo = None
 
             sample = img.rotate(angle := self.data['textAngle'] * (-180 / math.pi))
 
@@ -125,7 +128,7 @@ class OCRRenderer:
 
                     with Image.new('RGBA', size) as text_image:
                         ImageDraw.Draw(text_image).text(
-                            (stroke, -2),
+                            (stroke, -4),
                             text,
                             fill=color,
                             font=variant,
@@ -147,6 +150,9 @@ class OCRRenderer:
 
                 overlay = overlay.rotate(-angle)
                 img.paste(overlay, (0, 0), overlay)
+
+            if undo is not None:
+                img = img.transpose(undo)
 
             buffer = BytesIO()
             img.save(buffer, 'png')

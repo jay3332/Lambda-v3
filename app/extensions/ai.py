@@ -195,7 +195,7 @@ class AI(Cog):
 
         async with ctx.typing():
             try:
-                raw_text, data = await self._request_ocr(image)
+                raw_text, _ = await self._request_ocr(image)
             except aiohttp.ClientResponseError as exc:
                 return f'Error {exc.status}: {exc.message}', ERROR
 
