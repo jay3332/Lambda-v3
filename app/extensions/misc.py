@@ -29,7 +29,7 @@ class Miscellaneous(Cog):
     async def ping(self, ctx: Context) -> CommandResponse:
         """Pong! Sends detailed information about the bot's latency."""
         with Timer() as api:
-            await ctx.trigger_typing()
+            await ctx.typing()
 
         with Timer() as database:
             await ctx.db.execute('SELECT 1')

@@ -76,6 +76,7 @@ token: str = env('DISCORD_TOKEN')
 beta_token: str = env('DISCORD_BETA_TOKEN')
 client_secret: str = env('DISCORD_CLIENT_SECRET')
 cdn_authorization: str = env('CDN_AUTHORIZATION')
+computer_vision_key: str = env('COMPUTER_VISION_KEY')
 
 resolved_token: str = beta_token if beta else token
 

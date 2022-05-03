@@ -13,6 +13,7 @@ from typing import Any, ClassVar, Final, TYPE_CHECKING, Type
 import discord
 import jishaku
 from aiohttp import ClientSession
+from async_google_trans_new import AsyncTranslator
 from discord.ext import commands
 
 from app.core.cdn import CDNClient
@@ -59,6 +60,7 @@ class Bot(commands.Bot):
         startup_timestamp: datetime
         user_to_member_mapping: dict[int, discord.Member]
         timers: TimerManager
+        translator: AsyncTranslator
         web: Quart
 
     # TODO: if guild logging is enabled then Intents.all() may have to be used instead
@@ -182,6 +184,10 @@ class Bot(commands.Bot):
         self.user_to_member_mapping = {}
         self.timers = TimerManager(self)
         self.cdn = CDNClient(self)
+        self.translator = AsyncTranslator()
+
+        await self.translator._session.close()
+        self.translator._AsyncTranslator__session = self.session
 
         web_app.bot = self
         self.web = web_app
@@ -193,6 +199,9 @@ class Bot(commands.Bot):
         if system() == 'Linux':
             self._web_run_task = self.loop.create_task(self.web.run_task('0.0.0.0', 8080))
 
+        self.loop.create_task(self._setup_hook_task())
+
+    async def _setup_hook_task(self) -> None:
         await self._load_extensions()
 
         if test_guild is not None:
@@ -323,6 +332,7 @@ class Bot(commands.Bot):
             if isinstance(error, GenericCommandError):
                 return await ctx.send(error, reference=ctx.message, delete_after=15, ephemeral=True)
 
+            ctx.command.reset_cooldown(ctx)
             param = ctx.current_parameter
 
         elif isinstance(error, commands.MissingRequiredArgument):

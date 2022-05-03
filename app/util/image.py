@@ -52,7 +52,7 @@ class ImageFinder:
 
     URL_REGEX = re.compile(r'https?://\S+')
     TENOR_REGEX = re.compile(r'https?://(www\.)?tenor\.com/view/\S+/?')
-    GIPHY_REGEX = re.compile(r'https?://(www\.)?giphy\.com/gifs/[A-Za-z0-9]+/?')
+    GIPHY_REGEX = re.compile(r'https?://(www\.)?giphy\.com/gifs/[A-Za-z\d]+/?')
 
     ALLOWED_CONTENT_TYPES = {
         'image/png',
@@ -203,7 +203,7 @@ class ImageFinder:
         user_avatars: bool = True,
         fallback_to_user: bool = True,
         run_conversions: bool = True,
-    ) -> bytes:
+    ) -> bytes:  # sourcery no-metrics
         if query is not None and run_conversions and isinstance(query, str):
             query = await self._run_conversions(ctx, query)
 
@@ -231,6 +231,7 @@ class ImageFinder:
             return await sanitize(avatar)
 
         async def fallback() -> bytes | None:
+            # sourcery skip: merge-duplicate-blocks
             # I cannot figure out a way to make this code look good
 
             message: discord.Message = ctx.message
