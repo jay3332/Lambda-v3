@@ -35,6 +35,11 @@ LANGUAGES: Final[dict[str, str]] = {
     'SV': 'Swedish',
 }
 
+GOOGLE_REVERSE_MAPPING: Final[dict[str, str]] = {
+    **{k.lower(): k for k in LANGUAGES},
+    'zh-cn': 'ZH',
+}
+
 REVERSE_LANGUAGE_MAPPING: Final[dict[str, str]] = {v: k for k, v in LANGUAGES.items()}
 JSONRPC_VERSION: Final[str] = '2.0'
 

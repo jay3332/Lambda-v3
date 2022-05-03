@@ -154,7 +154,7 @@ class AI(Cog):
             img.save(buffer, format='PNG')
             return buffer.getvalue()
 
-    async def _request_ocr(self, image: bytes) -> tuple[str, dict[str, Any]]:
+    async def _request_ocr(self, image: bytes, **params: str) -> tuple[str, dict[str, Any]]:
         image: bytes = await self._resize_image(image)  # type: ignore
 
         async with self.bot.session.post(
@@ -164,6 +164,7 @@ class AI(Cog):
                 'Ocp-Apim-Subscription-Key': computer_vision_key,
             },
             data=image,
+            params=params,
         ) as response:
             response.raise_for_status()
             data = await response.json()
@@ -205,6 +206,37 @@ class AI(Cog):
 
             return 'OCR Results:', discord.File(BytesIO(raw_text.encode()), filename=f'ocr_{ctx.author.id}.txt'), REPLY
 
+    _GOOGLE_TO_BCP_MAPPING: ClassVar[dict[str, str]] = {
+        'zh-cn': 'zh-Hans',
+        'zh-tw': 'zh-Hant',
+        'sr': 'sr-Cryl',
+        'auto': 'unk',
+        **{item: item for item in (
+            'cs',
+            'da',
+            'nl',
+            'en',
+            'fi',
+            'fr',
+            'de',
+            'el',
+            'hu',
+            'it',
+            'ja',
+            'ko',
+            'nb',
+            'pl',
+            'pt',
+            'ru',
+            'es',
+            'sv',
+            'tr',
+            'ar',
+            'ro',
+            'sk',
+        )},
+    }
+
     @ocr.command('translate', aliases=('tr', 't', 'translated'))
     @cooldown(1, 25)
     @user_max_concurrency(1)
@@ -232,7 +264,10 @@ class AI(Cog):
 
         async with ctx.typing():
             try:
-                raw_text, data = await self._request_ocr(image)
+                raw_text, data = await self._request_ocr(
+                    image,
+                    language=self._GOOGLE_TO_BCP_MAPPING.get(flags.source, 'unk'),
+                )
             except aiohttp.ClientResponseError as exc:
                 return f'Error {exc.status}: {exc.message}', ERROR
 
