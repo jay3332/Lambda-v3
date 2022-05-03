@@ -128,7 +128,7 @@ class OCRRenderer:
 
                     with Image.new('RGBA', size) as text_image:
                         ImageDraw.Draw(text_image).text(
-                            (stroke, -4),
+                            (stroke, -2),
                             text,
                             fill=color,
                             font=variant,
