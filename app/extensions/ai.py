@@ -69,8 +69,8 @@ async def TranslationLanguage(ctx: Context, argument: str) -> str:
 
 
 class TranslateFlags(Flags):
-    source: TranslationLanguage = flag(short='s', aliases=('src', 'from', 'source-lang', 'original'), default='auto')
     render: bool = store_true(short='r', aliases=('render-image', 'immediately-render', 'image', 'as-image'))
+    source: TranslationLanguage = flag(short='s', aliases=('src', 'from', 'source-lang', 'original'), default='auto')
 
 
 class TranslatedOcrView(UserView):
