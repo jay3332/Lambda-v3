@@ -1,8 +1,8 @@
 git+https://github.com/Rapptz/discord.py
 git+https://github.com/Gorialis/jishaku
 git+https://github.com/jay3332/magmatic
+git+https://github.com/jay3332/async-google-trans-new
 aiohttp
-async-google-trans-new
 asyncpg
 beautifulsoup4
 dateparser

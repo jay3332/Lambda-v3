@@ -244,7 +244,7 @@ class Command(commands.Command):
             return result
 
         for name, param in params.items():
-            annotation, greedy, optional, origin = self._disect_param(param)
+            annotation, greedy, optional, origin = Command._disect_param(param)
             default = param.default
 
             if isinstance(annotation, FlagMeta) and self.custom_flags:
@@ -308,7 +308,7 @@ class Command(commands.Command):
             return result
 
         for name, param in params.items():
-            annotation, greedy, optional, origin = self._disect_param(param)
+            annotation, greedy, optional, origin = Command._disect_param(param)
 
             if isinstance(annotation, FlagMeta) and self.custom_flags:
                 for flag in self.custom_flags.walk_flags():
