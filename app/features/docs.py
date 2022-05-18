@@ -373,7 +373,7 @@ class DocumentationManager:
         'wand': DocumentationSource(
             key='wand',
             name='Wand',
-            url='https://wand-py.readthedocs.io/en/latest',
+            url='https://docs.wand-py.org/en/latest',
             aliases=('wand-py',),
         ),
         'numpy': DocumentationSource(
