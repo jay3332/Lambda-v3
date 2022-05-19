@@ -178,7 +178,7 @@ class Bot(commands.Bot):
         self.prepare_logger()
 
         self.bypass_checks = False
-        self.db = Database(loop=self.loop)
+        self.db = await Database(loop=self.loop).wait()
         self.fonts = FontManager()
         self.session = ClientSession()
         self.user_to_member_mapping = {}
