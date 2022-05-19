@@ -343,7 +343,7 @@ class DocumentationManager:
         'discord.py': DocumentationSource(
             key='discord.py',
             name='discord.py',
-            url='https://discordpy.readthedocs.io/en/master',
+            url='https://discordpy.readthedocs.io/en/latest',
             aliases=('dpy', 'discordpy', 'discord-py'),
         ),
         'python': DocumentationSource(
