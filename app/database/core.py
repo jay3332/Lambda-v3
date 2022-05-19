@@ -12,6 +12,7 @@ from .migrations import Migrator
 if TYPE_CHECKING:
     from app.util.types import LevelingConfig, LevelingData, RankCard
 
+    DatabaseT = TypeVar('DatabaseT', bound='_Database')
     RecordT = TypeVar('RecordT', bound='BaseRecord')
 
 __all__ = (
@@ -35,8 +36,9 @@ class _Database:
             migrator = Migrator(conn)
             await migrator.run_migrations()
 
-    async def wait(self) -> None:
+    async def wait(self: DatabaseT) -> DatabaseT:
         await self._connect_task
+        return self
 
     @overload
     def acquire(self, *, timeout: float = None) -> Awaitable[asyncpg.Connection]:
