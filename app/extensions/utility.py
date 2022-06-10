@@ -191,6 +191,8 @@ class Utility(Cog):
         "bam chika bam bam",
         "It's always bad when a student can drive...",
         "You never wanna see 'DO-OVER' on your report card...",
+        "Let me get the lights for you! claps",
+        "Special thanks to my lighting department",
     ]
     
     @command(aliases=('walkerquote', 'walker-quote'), hidden=True)
