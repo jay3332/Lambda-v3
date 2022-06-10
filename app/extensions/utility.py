@@ -194,6 +194,12 @@ class Utility(Cog):
         "Let me get the lights for you! claps",
         "Special thanks to my lighting department",
         "Its time for the Walker Pledge on this beautiful ___ morning"
+        "If I get honor roll this year, my mother would take me to Six Flags!",
+        "Period 9, so-and-so's house!",
+        "Average score for Period 2...98 percent!",
+        "As one of my students said, 'I will leave Kingsview but Kingsview will never leave me...'",
+        "Finals exams are __, the queen mother of all tests",
+        "If you studied this should be an easy A, if not there's always the mercy score",
     ]
     
     @command(aliases=('walkerquote', 'walker-quote'), hidden=True)
