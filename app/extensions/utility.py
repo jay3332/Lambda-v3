@@ -175,7 +175,7 @@ class Utility(Cog):
         "Watch your fingers, watch your toes, watch where your TI-84 calculators go!",
         "We don't wany any crack in the table! Crack is bad!",
         "This is a family program!",
-        "Last call for Period ___, this is the last and final call for Period ___...",
+        "Last call for Period \\_\\_\\_, this is the last and final call for Period \\_\\_\\_...",
         "Period 7, just like heaven!",
         "Ok folks, time for period 9!",
         "[name], would you like a bullying form?",
