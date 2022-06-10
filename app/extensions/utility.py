@@ -193,6 +193,7 @@ class Utility(Cog):
         "You never wanna see 'DO-OVER' on your report card...",
         "Let me get the lights for you! claps",
         "Special thanks to my lighting department",
+        "Its time for the Walker Pledge on this beautiful ___ morning"
     ]
     
     @command(aliases=('walkerquote', 'walker-quote'), hidden=True)
