@@ -196,4 +196,11 @@ class Utility(Cog):
     @command(aliases=('walkerquote', 'walker-quote'), hidden=True)
     async def walker(self, ctx: Context) -> CommandResponse:
         """Sends a random quote from Mr. Walker"""
-        return f'"{random.choice(self.WALKER_QUOTES)}" - Mr. Walker'
+        async with ctx.bot.session.get('https://cdn.discordapp.com/attachments/728341827471671429/984612085965160448/unknown.png') as img:
+            img = await img.read()
+
+        webhook = discord.utils.get(await ctx.channel.webhooks(), name='Mr. Walker')
+        if not webhook:
+            webhook = await ctx.channel.create_webhook(name='Mr. Walker', avatar=img)
+            
+        await webhook.send(random.choice(self.WALKER_QUOTES), wait=True)
