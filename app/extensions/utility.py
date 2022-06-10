@@ -1,8 +1,10 @@
+import random
+
 import discord
 from async_google_trans_new.constant import LANGUAGES
 from jishaku.codeblocks import codeblock_converter
 
-from app.core import Cog, Context, Flags, REPLY, flag, group, cooldown
+from app.core import Cog, Context, Flags, REPLY, command, flag, group, cooldown
 from app.extensions.ai import TranslationLanguage
 from app.util import UserView, cutoff
 from app.util.pagination import LineBasedFormatter, Paginator
@@ -147,3 +149,51 @@ class Utility(Cog):
                 f'`{k}` ({_capitalize_language(v)})' for k, v in LANGUAGES.items()
             ]
         )), REPLY
+    
+    WALKER_QUOTES = [
+        "Just remember, Dick and Cock are right next to each other",
+        "I think I hear my mother calling, *mother*!",
+        "Oh honey that tickles!",
+        "As my grandmother Eunice always said, 'Better late than never!' She lived to be 92...",
+        "True dat, true dat",
+        "I'll ask Mrs. Swiggins to get those copied for you!",
+        "Mrs. Swiggins is running a little late today",
+        "I pleeeedge to do my beEeEeest today...",
+        "So true and words to live by",
+        "Looks like somebody's reading my cue cards!",
+        "Naughty naughty",
+        "Study study, school's your buddy.",
+        "Make sure you jot down today's homework, or H.W. in the Biz",
+        "Slow down, there's enough learning for everybody",
+        "The period is Period ___ of course, my favorite class and hopefully yours!",
+        "Here's some team punches for you guys",
+        "Make sure to update the football field...looks like ___ is in scoring position!",
+        "Don't forget your Ti-83 calculator!",
+        "I'll never forget the time Harry Hoshenpepper tried to take his Scrantron in green highlighter...",
+        "Aaaaaand... pinwheel!",
+        "You wouldn't want to forget your hello kitty lunchbox!",
+        "Watch your fingers, watch your toes, watch where your TI-84 calculators go!",
+        "We don't wany any crack in the table! Crack is bad!",
+        "This is a family program!",
+        "Last call for Period ___, this is the last and final call for Period ___...",
+        "Period 7, just like heaven!",
+        "Ok folks, time for period 9!",
+        "[name], would you like a bullying form?",
+        "That's where the saying ___ comes from!",
+        "They called prostitutes back then soiled doves....",
+        "Just a few more minutes until showtime!",
+        "Autographs will be available after school",
+        "Signed: to my dearest fan",
+        "We're all big weiners!",
+        "And remember, say no to crack!",
+        "Only ___ days left to high school...can you believe it?",
+        "Looks like the ___ are about to score a touchdown!",
+        "bam chika bam bam",
+        "It's always bad when a student can drive...",
+        "You never wanna see 'DO-OVER' on your report card...",
+    ]
+    
+    @command(aliases=('walkerquote', 'walker-quote'), hidden=True)
+    async def walker(self, ctx: Context) -> CommandResponse:
+        """Sends a random quote from Mr. Walker"""
+        return random.choice(f'"{random.choice(self.WALKER_QUOTES)}" - Mr. Walker')
