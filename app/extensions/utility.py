@@ -196,4 +196,4 @@ class Utility(Cog):
     @command(aliases=('walkerquote', 'walker-quote'), hidden=True)
     async def walker(self, ctx: Context) -> CommandResponse:
         """Sends a random quote from Mr. Walker"""
-        return random.choice(f'"{random.choice(self.WALKER_QUOTES)}" - Mr. Walker')
+        return f'"{random.choice(self.WALKER_QUOTES)}" - Mr. Walker'
