@@ -154,7 +154,8 @@ class Utility(Cog):
         "Just remember, Dick and Cock are right next to each other",
         "I think I hear my mother calling, *mother*!",
         "Oh honey that tickles!",
-        "As my grandmother Eunice always said, 'Better late than never!' She lived to be 92...",
+        "Well you know what my grandmother Eunice always used to say. 'Better late than never!' My golly she lived to be 92... "
+        "You never had a snickerdoodle cookie 'till you've had one of grandma's cookies",
         "True dat, true dat",
         "I'll ask Mrs. Swiggins to get those copied for you!",
         "Mrs. Swiggins is running a little late today",
@@ -169,7 +170,7 @@ class Utility(Cog):
         "Here's some team punches for you guys",
         "Make sure to update the football field...looks like ___ is in scoring position!",
         "Don't forget your Ti-83 calculator!",
-        "I'll never forget the time Harry Hoshenpepper tried to take his Scrantron in green highlighter...",
+        "I'll never forget the time Harry Hoshenpepper tried to take his Scantron in green highlighter...",
         "Aaaaaand... pinwheel!",
         "You wouldn't want to forget your hello kitty lunchbox!",
         "Watch your fingers, watch your toes, watch where your TI-84 calculators go!",
@@ -200,6 +201,16 @@ class Utility(Cog):
         "As one of my students said, 'I will leave Kingsview but Kingsview will never leave me...'",
         "Finals exams are __, the queen mother of all tests",
         "If you studied this should be an easy A, if not there's always the mercy score",
+        "Mrs. Swiggins was off shuffleboarding today",
+        "Happy Thursday! Or as I'd like to call it..fRiDAys eeEEve",
+        "Welcome to the fun factory",
+        "oh hONEy iTS quiTE iTCHY in tHEre",
+        "Or... you can get some ding dongs",
+        "I see that you guys are doing your part to fight childhood obesity!",
+        "30 seconds to show time!!!",
+        "I see you got a low-calorie treat there",
+        "How do you think I got my beach body?",
+        "No mugs please, but you could always get me a new tie",
     ]
     
     @command(aliases=('walkerquote', 'walker-quote'), hidden=True)
