@@ -174,7 +174,7 @@ class Utility(Cog):
         "Aaaaaand... pinwheel!",
         "You wouldn't want to forget your hello kitty lunchbox!",
         "Watch your fingers, watch your toes, watch where your TI-84 calculators go!",
-        "We don't wany any crack in the table! Crack is bad!",
+        "We don't want any crack in the table! Crack is bad!",
         "This is a family program!",
         "Last call for Period \\_\\_\\_, this is the last and final call for Period \\_\\_\\_...",
         "Period 7, just like heaven!",
