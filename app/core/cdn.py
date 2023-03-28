@@ -18,7 +18,7 @@ __all__ = (
     'CDNEntry',
 )
 
-BASE_URL: Final[str] = 'https://cdn.lambdabot.cf'
+BASE_URL: Final[str] = 'https://cdn.lambdabot.me'
 HEADERS: Final[dict[str, str]] = {
     'Authorization': f'Bearer {cdn_authorization}',
     'User-Agent': 'LambdaBot/1.0',
