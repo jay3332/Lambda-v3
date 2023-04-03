@@ -421,6 +421,12 @@ class DocumentationManager:
             url='https://magmatic.readthedocs.io/en/latest',
             aliases=('magma',),
         ),
+        'adapt.py': DocumentationSource(
+            key='adapt.py',
+            name='adapt.py',
+            url='https://adaptpy.readthedocs.io/en/latest',
+            aliases=('adapt', 'apy', 'adaptpy'),
+        ),
     }
 
     def __init__(self, bot: Bot) -> None:
