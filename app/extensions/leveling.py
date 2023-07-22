@@ -314,6 +314,9 @@ class RemoveLevelRolesSelect(discord.ui.Select['InteractiveLevelRolesView']):
             for role_id, level in sorted(self._roles_ref.items(), key=lambda pair: pair[1])
         ]
         self.disabled = not self.options
+        # Placeholder if no options
+        if self.disabled:
+            self.options = [discord.SelectOption(label='.')]
 
     async def callback(self, interaction: TypedInteraction) -> Any:
         for value in self.values:
