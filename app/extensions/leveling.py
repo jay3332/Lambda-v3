@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from difflib import SequenceMatcher
+from enum import Enum
 from io import BytesIO
 from textwrap import dedent
 from typing import Any, Callable, Coroutine, TypeVar, TYPE_CHECKING
@@ -11,8 +12,8 @@ from discord.ext import commands
 from app.core import Cog, Context, Flags, REPLY, command, cooldown, flag, group, store_true
 from app.core.helpers import user_max_concurrency
 from app.features.leveling.core import LevelingManager
-from app.features.leveling.rank_card import Font as RankCardFont
-from app.util import converter
+from app.features.leveling.rank_card import Font as RankCardFont, RankCard
+from app.util import AnsiColor, AnsiStringBuilder, UserView, converter
 from app.util.common import progress_bar
 from app.util.image import ImageFinder
 from app.util.types import CommandResponse
@@ -168,6 +169,87 @@ class RankCardEditFlags(Flags, compress_usage=True):
     progress_bar_alpha: AlphaQuantity = flag(name='progress-bar-alpha', alias='h')
 
 
+class RankCardExportCodeblockStyle(Enum):
+    none  = 0
+    plain = 1
+    ansi  = 2
+
+
+class RankCardExportView(UserView):
+    def __init__(self, ctx: Context, rank_card: RankCard) -> None:
+        super().__init__(ctx.author)
+        self.clean_prefix = ctx.clean_prefix
+        self.rank_card = rank_card
+        self._codeblock_style = RankCardExportCodeblockStyle.ansi
+        self._show_command_header = True
+        self.update()
+
+    def update(self) -> None:
+        switch = lambda target: (
+            discord.ButtonStyle.primary
+            if self._codeblock_style is target
+            else discord.ButtonStyle.secondary
+        )
+        self.raw.style = switch(RankCardExportCodeblockStyle.none)
+        self.codeblock.style = switch(RankCardExportCodeblockStyle.plain)
+        self.ansi_codeblock.style = switch(RankCardExportCodeblockStyle.ansi)
+
+        self.show_command_header.label = (
+            'Hide Command Header'
+            if self._show_command_header
+            else 'Show Command Header'
+        )
+        self.show_command_header.style = (
+            discord.ButtonStyle.success
+            if self._show_command_header
+            else discord.ButtonStyle.danger
+        )
+
+    def render(self) -> str:
+        self.update()
+        buffer = AnsiStringBuilder()
+        if self._show_command_header:
+            buffer.append(self.clean_prefix, color=AnsiColor.white, bold=True)
+            buffer.append('rank-card edit', color=AnsiColor.green).newline()
+
+        for name, value in self.rank_card.data:
+            if name == 'user_id':
+                continue
+            if self._show_command_header:
+                buffer.append('  ')
+
+            buffer.append(f"--{name.replace('_', '-')} ", color=AnsiColor.blue)
+            buffer.append(str(value), color=AnsiColor.green, bold=True).newline()
+
+        match self._codeblock_style:
+            case RankCardExportCodeblockStyle.none:
+                return buffer.raw
+            case RankCardExportCodeblockStyle.plain:
+                return buffer.ensure_codeblock().raw
+            case RankCardExportCodeblockStyle.ansi:
+                return buffer.ensure_codeblock().build()
+
+    @discord.ui.button(label='Raw', style=discord.ButtonStyle.primary, row=0)
+    async def raw(self, interaction: discord.Interaction, _) -> None:
+        self.codeblock_style = RankCardExportCodeblockStyle.none
+        await interaction.response.edit_message(self.render(), view=self)
+
+    @discord.ui.button(label='Codeblock', style=discord.ButtonStyle.primary, row=0)
+    async def codeblock(self, interaction: discord.Interaction, _) -> None:
+        self.codeblock_style = RankCardExportCodeblockStyle.plain
+        await interaction.response.edit_message(self.render(), view=self)
+
+    @discord.ui.button(label='ANSI Codeblock', style=discord.ButtonStyle.primary, row=0)
+    async def ansi_codeblock(self, interaction: discord.Interaction, _) -> None:
+        self.codeblock_style = RankCardExportCodeblockStyle.ansi
+        await interaction.response.edit_message(self.render(), view=self)
+
+    @discord.ui.button(label='Show Command Header', style=discord.ButtonStyle.success, row=1)
+    async def show_command_header(self, interaction: discord.Interaction, _) -> None:
+        self.show_command_header = not self.show_command_header
+        await interaction.response.edit_message(self.render(), view=self)
+
+
 class Leveling(Cog):
     """Interact with Lambda's robust and feature-packed leveling system."""
 
@@ -309,3 +391,14 @@ class Leveling(Cog):
             result = await card.render(rank=record.rank, level=record.level, xp=record.xp, max_xp=record.max_xp)
 
         return 'Rank card updated:', discord.File(result, f'rank_card_preview_{ctx.author.id}.png'), REPLY
+
+    @rank_card.command('export', aliases=('ex', 'flags', 'freeze'))
+    @cooldown(1, 3)
+    async def rank_card_export(self, ctx: Context) -> CommandResponse:
+        """Sends your current rank card configuration as command flags.
+
+        This exports your current rank card configuration as an invocation of `{PREFIX}rank-card edit`.
+        You can then invoke this command to import the configuration back into your rank card at a later time.
+        """
+        view = RankCardExportView(ctx, await self.manager.fetch_rank_card(ctx.author))
+        return view.render(), view, REPLY

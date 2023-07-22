@@ -46,6 +46,9 @@ class Font(Enum):
     POPPINS = 5
     INTER = 6
 
+    def __str__(self) -> str:
+        return self.name.replace('_', ' ').title()
+
 
 class BaseRankCard:
     """Represents a user's rank card information."""
