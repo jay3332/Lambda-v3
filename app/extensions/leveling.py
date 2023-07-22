@@ -458,12 +458,13 @@ class Leveling(Cog):
         Roles can be stacked (keep their previous roles) or not stacked (only have the highest role).
         """
         view = InteractiveLevelRolesView(ctx, config=await self.manager.fetch_guild_config(ctx.guild.id))
-        return (
+        yield (
             'This interactive configurator can be used simutaneously by anyone with the *Manage Server* permission.',
             view.make_embed(),
             view,
             REPLY,
         )
+        await view.wait()
 
     @command(aliases=('r', 'level', 'lvl', 'lv', 'xp', 'exp'), bot_permissions=('attach_files',))
     @cooldown(1, 5)
