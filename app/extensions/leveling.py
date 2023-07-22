@@ -200,9 +200,9 @@ class RankCardExportView(UserView):
             else 'Show Command Header'
         )
         self.show_command_header.style = (
-            discord.ButtonStyle.success
+            discord.ButtonStyle.danger
             if self._show_command_header
-            else discord.ButtonStyle.danger
+            else discord.ButtonStyle.success
         )
 
     def render(self) -> str:
@@ -219,7 +219,7 @@ class RankCardExportView(UserView):
                 buffer.append('  ')
 
             buffer.append(f"--{name.replace('_', '-')} ", color=AnsiColor.blue)
-            buffer.append(str(value), color=AnsiColor.green, bold=True).newline()
+            buffer.append(str(value), color=AnsiColor.cyan, bold=True).newline()
 
         match self._codeblock_style:
             case RankCardExportCodeblockStyle.none:
