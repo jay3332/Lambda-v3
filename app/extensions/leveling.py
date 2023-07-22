@@ -239,22 +239,22 @@ class RankCardExportView(UserView):
     @discord.ui.button(label='Raw', style=discord.ButtonStyle.primary, row=0)
     async def raw(self, interaction: discord.Interaction, _) -> None:
         self.codeblock_style = RankCardExportCodeblockStyle.none
-        await interaction.response.edit_message(self.render(), view=self)
+        await interaction.response.edit_message(content=self.render(), view=self)
 
     @discord.ui.button(label='Codeblock', style=discord.ButtonStyle.primary, row=0)
     async def codeblock(self, interaction: discord.Interaction, _) -> None:
         self.codeblock_style = RankCardExportCodeblockStyle.plain
-        await interaction.response.edit_message(self.render(), view=self)
+        await interaction.response.edit_message(content=self.render(), view=self)
 
     @discord.ui.button(label='ANSI Codeblock', style=discord.ButtonStyle.primary, row=0)
     async def ansi_codeblock(self, interaction: discord.Interaction, _) -> None:
         self.codeblock_style = RankCardExportCodeblockStyle.ansi
-        await interaction.response.edit_message(self.render(), view=self)
+        await interaction.response.edit_message(content=self.render(), view=self)
 
     @discord.ui.button(label='Show Command Header', style=discord.ButtonStyle.success, row=1)
     async def show_command_header(self, interaction: discord.Interaction, _) -> None:
         self.show_command_header = not self.show_command_header
-        await interaction.response.edit_message(self.render(), view=self)
+        await interaction.response.edit_message(content=self.render(), view=self)
 
 
 class Leveling(Cog):
