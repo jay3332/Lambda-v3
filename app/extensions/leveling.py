@@ -373,7 +373,6 @@ class InteractiveLevelRolesView(discord.ui.View):
     )
     async def add_level_role(self, interaction: TypedInteraction, select: discord.ui.RoleSelect) -> None:
         role = select.values[0]
-        self._role_names[role.id] = role.name
 
         async def hook(itx: TypedInteraction):
             await itx.response.send_modal(AddLevelRoleModal(self, role=role))
