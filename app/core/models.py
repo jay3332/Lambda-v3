@@ -21,7 +21,7 @@ from discord.utils import MISSING, cached_property
 from app.core.flags import ConsumeUntilFlag, FlagMeta, Flags
 from app.util import AnsiColor, AnsiStringBuilder
 from app.util.structures import TemporaryAttribute
-from app.util.types import AsyncCallable, TypedContext
+from app.util.types import AsyncCallable, TypedContext, TypedInteraction
 from app.util.views import ConfirmationView
 
 if TYPE_CHECKING:
@@ -496,11 +496,18 @@ class Context(TypedContext, Generic[CogT]):
         timeout: float = 60.,
         true: str = 'Yes',
         false: str = 'No',
+        interaction: TypedInteraction = None,
+        hook: AsyncCallable[[TypedInteraction], None] = None,
         **kwargs,
     ) -> bool | None:
         """Sends a confirmation message and waits for a response."""
         user = user or self.author
-        view = view or ConfirmationView(user=user, true=true, false=false, timeout=timeout)
+        view = view or ConfirmationView(user=user, true=true, false=false, hook=hook, timeout=timeout)
+
+        if interaction is not None:
+            await interaction.response.send_message(content, view=view, **kwargs)
+            await view.wait()
+            return view.value
         message = await self.send(content, view=view, **kwargs)
 
         await view.wait()

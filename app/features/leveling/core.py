@@ -129,12 +129,16 @@ class LevelingConfig:
         return {int(k): v for k, v in mapping.items()}
 
     async def update(self, **kwargs: Any) -> None:
+        def normalize(i: int, key: str, value: Any) -> tuple[str, Any]:
+            if isinstance(value, dict):
+                return f'{key} = ${i}::JSONB', json.dumps(value)
+            return f'{key} = ${i}', value
+
         if not len(kwargs):
             return
 
-        kwargs = OrderedDict(kwargs)
-        chunk = ', '.join(f'{key} = ${i}' for i, key in enumerate(kwargs, start=2))
-
+        kwargs = OrderedDict(normalize(i, key, value) for i, (key, value) in enumerate(kwargs.items(), start=2))
+        chunk = ', '.join(kwargs)
         data = await self._bot.db.fetchrow(
             f'UPDATE level_config SET {chunk} WHERE guild_id = $1 RETURNING level_config.*;',
             self.guild_id,

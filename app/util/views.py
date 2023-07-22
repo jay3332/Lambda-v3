@@ -2,6 +2,8 @@ from typing import Awaitable, Callable, TypeAlias
 
 import discord
 
+from app.util.types import AsyncCallable, TypedInteraction
+
 AnyUser: TypeAlias = discord.User | discord.Member
 
 
@@ -21,10 +23,12 @@ class UserView(discord.ui.View):
 
 class ConfirmationView(UserView):
     def __init__(
-        self, *, user: AnyUser, true: str = 'Confirm', false: str = 'Cancel', timeout: float = None, defer: bool = True,
+        self, *, user: AnyUser, true: str = 'Confirm', false: str = 'Cancel',
+        timeout: float = None, defer: bool = True, hook: AsyncCallable[[TypedInteraction], None] = None,
     ) -> None:
         self.value: bool | None = None
         self._defer: bool = defer
+        self._hook = hook
         super().__init__(user, timeout=timeout)
 
         self._true_button = discord.ui.Button(style=discord.ButtonStyle.success, label=true)
@@ -38,8 +42,8 @@ class ConfirmationView(UserView):
         self.add_item(self._true_button)
         self.add_item(self._false_button)
 
-    def _make_callback(self, toggle: bool) -> Callable[[discord.Interaction], Awaitable[None]]:
-        async def callback(interaction: discord.Interaction) -> None:
+    def _make_callback(self, toggle: bool) -> Callable[[TypedInteraction], Awaitable[None]]:
+        async def callback(interaction: TypedInteraction) -> None:
             self.value = toggle
             self.interaction = interaction
 
@@ -52,7 +56,9 @@ class ConfirmationView(UserView):
                 self._true_button.style = discord.ButtonStyle.secondary
 
             self.stop()
-            if self._defer:
+            if toggle and self._hook is not None:
+                await self._hook(interaction)
+            elif self._defer:
                 await interaction.response.defer()
 
         return callback
