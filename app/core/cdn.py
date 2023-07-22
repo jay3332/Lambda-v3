@@ -18,7 +18,7 @@ __all__ = (
     'CDNEntry',
 )
 
-BASE_URL: Final[str] = 'https://cdn.lambdabot.me'
+BASE_URL: Final[str] = 'https://lc.adapt.chat'
 HEADERS: Final[dict[str, str]] = {
     'Authorization': f'Bearer {cdn_authorization}',
     'User-Agent': 'LambdaBot/1.0',
