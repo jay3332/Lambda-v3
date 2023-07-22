@@ -408,4 +408,4 @@ class Leveling(Cog):
         You can then invoke this command to import the configuration back into your rank card at a later time.
         """
         view = RankCardExportView(ctx, await self.manager.fetch_rank_card(ctx.author))
-        return view.render(), view, REPLY
+        return view.render(), view, REPLY, {"suppress_embeds": True}
