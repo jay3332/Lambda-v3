@@ -13,7 +13,6 @@ from typing import Any, ClassVar, Final, TYPE_CHECKING, Type
 import discord
 import jishaku
 from aiohttp import ClientSession
-from async_google_trans_new import AsyncTranslator
 from discord.ext import commands
 
 from app.core.cdn import CDNClient
@@ -60,7 +59,7 @@ class Bot(commands.Bot):
         startup_timestamp: datetime
         user_to_member_mapping: dict[int, discord.Member]
         timers: TimerManager
-        translator: AsyncTranslator
+        # translator: AsyncTranslator
         web: Quart
 
     # TODO: if guild logging is enabled then Intents.all() may have to be used instead
@@ -184,10 +183,10 @@ class Bot(commands.Bot):
         self.user_to_member_mapping = {}
         self.timers = TimerManager(self)
         self.cdn = CDNClient(self)
-        self.translator = AsyncTranslator()
-
-        await self.translator._session.close()
-        self.translator._AsyncTranslator__session = self.session
+        # self.translator = AsyncTranslator()
+        #
+        # await self.translator._session.close()
+        # self.translator._AsyncTranslator__session = self.session
 
         web_app.bot = self
         self.web = web_app

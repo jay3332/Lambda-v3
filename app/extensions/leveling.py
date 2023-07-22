@@ -233,7 +233,7 @@ class Leveling(Cog):
         user = user or ctx.author
         rank_card = await self.manager.fetch_rank_card(ctx.author if flags.my_card else user)
         record = self.manager.user_stats_for(user)
-        await record.fetch_if_necessary()
+        await record.fetch()
 
         if flags.embed:
             embed = discord.Embed(color=Colors.primary, timestamp=ctx.now)
@@ -302,7 +302,10 @@ class Leveling(Cog):
         card = await self.manager.fetch_rank_card(ctx.author)
         await card.update(**kwargs)
 
+        record = self.manager.user_stats_for(ctx.author)
+        await record.fetch()
+
         async with ctx.typing():
-            result = await card.render(rank=3, level=5, xp=40, max_xp=100)
+            result = await card.render(rank=record.rank, level=record.level, xp=record.xp, max_xp=record.max_xp)
 
         return 'Rank card updated:', discord.File(result, f'rank_card_preview_{ctx.author.id}.png'), REPLY

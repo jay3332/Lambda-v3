@@ -131,9 +131,14 @@ class BaseRankCard:
 
 
 class RankCard(BaseRankCard):
-    """Represents a rank card with rendering methods."""\
+    """Represents a rank card with rendering methods."""
 
     CARD_ASPECT_RATIO: ClassVar[float] = 0.427536
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+
+        self._prepared_background: Image.Image | None = None
 
     async def _fetch_background_bytes(self) -> BytesIO | None:
         if not self.background_url:
@@ -309,11 +314,28 @@ class RankCard(BaseRankCard):
         max_xp: int,
         user: Member | None = None,
     ) -> BytesIO:
-        background_bytes = await self.fetch_background_bytes()
-        background = await self.prepare_background(background_bytes)  # type: ignore
+        if self._prepared_background is None:
+            background_bytes = await self.fetch_background_bytes()
+            self._prepared_background = await self.prepare_background(background_bytes)  # type: ignore
 
         user = user or self.user
         avatar = user.avatar or user.default_avatar
         avatar = await avatar.with_format('png').with_size(512).read()
 
-        return await self._render(background, avatar, user=user, rank=rank, level=level, xp=xp, max_xp=max_xp)
+        return await self._render(
+            self._prepared_background.copy(),
+            avatar,
+            user=user,
+            rank=rank,
+            level=level,
+            xp=xp,
+            max_xp=max_xp,
+        )
+
+    async def update(self, **kwargs: Any) -> None:
+        if 'background_url' in kwargs:
+            self.invalidate()
+        await super().update(**kwargs)
+
+    def invalidate(self) -> None:
+        self._prepared_background = None

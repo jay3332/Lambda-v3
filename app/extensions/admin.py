@@ -1,13 +1,22 @@
+from __future__ import annotations
+
+import contextlib
 import importlib
-from asyncio import create_subprocess_exec
+from asyncio import create_subprocess_exec, subprocess
 from asyncio.subprocess import PIPE
-from typing import NamedTuple
+from io import StringIO
+from typing import Any, NamedTuple
 
 import discord
+import tabulate
+from jishaku.codeblocks import codeblock_converter
 
 from app.core import Bot, Cog, Context, REPLY, group
+from app.database import Migrator
 from app.util import AnsiColor, AnsiStringBuilder, UserView
-from app.util.types import CommandResponse
+from app.util.common import humanize_small_duration, pluralize
+from app.util.structures import Timer
+from app.util.types import CommandResponse, TypedInteraction
 from config import Colors
 
 
@@ -27,7 +36,7 @@ class GitPullView(UserView):
             self.reload_modified.disabled = True
 
     @discord.ui.button(label='Reload Modified Files', style=discord.ButtonStyle.primary)
-    async def reload_modified(self, interaction: discord.Interaction, _) -> None:
+    async def reload_modified(self, interaction: TypedInteraction, _) -> None:
         response = AnsiStringBuilder()
 
         async with self.ctx.typing():
@@ -66,7 +75,7 @@ class GitPullView(UserView):
         await interaction.response.send_message(response.ensure_codeblock().dynamic(self.ctx))
 
     @discord.ui.button(label='Restart Bot', style=discord.ButtonStyle.danger)
-    async def restart_bot(self, interaction: discord.Interaction, _) -> None:
+    async def restart_bot(self, interaction: TypedInteraction, _) -> None:
         await interaction.response.send_message('Restarting...')
         await self.bot.close()
 
@@ -84,6 +93,80 @@ class Admin(Cog):
     async def developer(self, ctx: Context) -> None:
         """Developer-only commands."""
         await ctx.send_help(ctx.command)
+
+    @developer.command(aliases={'query', "db", "database"})
+    async def sql(self, ctx: Context, *, sql: codeblock_converter) -> Any:
+        """Fetches the results of a SQL query."""
+        async with ctx.typing():
+            with Timer() as timer:
+                try:
+                    result = await ctx.db.fetch(sql.content)
+                except Exception as exc:
+                    return f"Error!\n```sql\n{exc}```", REPLY
+
+            time = f'in {humanize_small_duration(timer.elapsed)}: '
+
+            if not result:
+                return f"{time} No results.", REPLY
+
+            table_raw = tabulate.tabulate(result, headers="keys", tablefmt="fancy_grid")
+            time = pluralize(f'{len(result):,} result(s) in {time}')
+
+            message = f"{time}\n```sql\n{table_raw}```"
+
+            if len(message) <= 2000 and all(len(line) < 140 for line in message.split('\n')):
+                return message, REPLY
+
+            # noinspection PyTypeChecker
+            file = discord.File(StringIO(table_raw), filename='response.txt')
+            return time, file, REPLY
+
+    @developer.group(aliases={'mig', 'm', 'migrate', 'migration'})
+    async def migrations(self, ctx: Context):
+        """Manages database migrations."""
+        await ctx.send_help(ctx.command)
+
+    @migrations.command('add', aliases={'+', 'new', 'create'})
+    async def db_migrations_add(self, ctx: Context, name: str, *, sql: codeblock_converter) -> str:
+        """Creates a new migration."""
+        out = StringIO()
+
+        async with ctx.typing():
+            with (
+                contextlib.redirect_stdout(out),
+                contextlib.redirect_stderr(out),
+            ):
+                # stage async later
+                filename = Migrator.create_migration(name, stage=False)
+
+                with open(filename, 'w') as fp:
+                    fp.write(sql.content)
+
+                await subprocess.create_subprocess_shell(f'git add {filename}')
+
+            out.seek(0)
+
+        ctx.bot.loop.create_task(ctx.thumbs())
+        return f'```{out.read()}```'
+
+    @migrations.command('run', aliases={'execute', 'exec', 'r', 'push'})
+    async def db_migrations_run(self, ctx: Context) -> str:
+        """Runs pending migrations."""
+        out = StringIO()
+
+        async with ctx.typing():
+            with (
+                contextlib.redirect_stdout(out),
+                contextlib.redirect_stderr(out),
+            ):
+                async with ctx.db.acquire() as conn:
+                    migrator = Migrator(conn)
+                    await migrator.run_migrations(debug=True)
+
+            out.seek(0)
+
+        ctx.bot.loop.create_task(ctx.thumbs())
+        return f'```{out.read()}```'
 
     @developer.command('bypass', aliases={'bp', 'bypass-checks'})
     async def bypass(self, ctx: Context) -> CommandResponse:

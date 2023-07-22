@@ -228,14 +228,7 @@ class CustomCommandManager:
         db = self.db
         await db.wait()
 
-        for data in await db.fetch(
-            """
-            SELECT
-                *
-            FROM
-                custom_commands
-            """
-        ):
+        for data in await db.fetch("SELECT * FROM custom_commands"):
             guild_id = data['guild_id']
             name = data['name']
 
