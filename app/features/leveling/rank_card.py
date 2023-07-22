@@ -233,12 +233,12 @@ class RankCard(BaseRankCard):
 
                 if projected_width > 0:
                     with Image.new('RGBA', (width, bar_bg.height - 24)) as bar:
-                        # the following two nested context managers can be merged into one using a tuple-like syntax,
-                        # but PyCharm does not support it yet.
-                        with Image.new('RGBA', (projected_width, bar.height), self.tertiary_color) as actual:
-                            with rounded_mask(bar.size, bar.height // 2, quality=3) as mask:
-                                mask = mask.crop((0, 0, projected_width, mask.height))
-                                bar.paste(actual, (0, 0), mask)
+                        with (
+                            Image.new('RGBA', (projected_width, bar.height), self.tertiary_color) as actual,
+                            rounded_mask(bar.size, bar.height // 2, quality=3) as mask,
+                        ):
+                            mask = mask.crop((0, 0, projected_width, mask.height))
+                            bar.paste(actual, (0, 0), mask)
 
                         image.paste(bar, (405, 284), bar)
 

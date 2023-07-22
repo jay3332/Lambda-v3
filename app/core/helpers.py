@@ -261,3 +261,7 @@ def cooldown(rate: int, per: float, bucket: commands.BucketType = commands.Bucke
 
 def user_max_concurrency(count: int, *, wait: bool = False) -> AsyncCallableDecorator:
     return commands.max_concurrency(count, commands.BucketType.user, wait=wait)
+
+
+def guild_max_concurrency(count: int, *, wait: bool = False) -> AsyncCallableDecorator:
+    return commands.max_concurrency(count, commands.BucketType.guild, wait=wait)

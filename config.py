@@ -126,6 +126,7 @@ class Emojis:
     """Emojis used by Lambda."""
 
     plus: str = '<:plus:962150204973395998>'
+    trash: str = '<:trash:861320284588867634>'
     loading: str = '<a:loading:812768154198736898>'
     youtube: str = '<:youtube:967577973018472458>'
     soundcloud: str = '<:soundcloud:969011164426145895>'

@@ -10,13 +10,13 @@ import discord
 from discord.ext import commands
 
 from app.core import Cog, Context, Flags, REPLY, command, cooldown, flag, group, store_true
-from app.core.helpers import user_max_concurrency
-from app.features.leveling.core import LevelingManager
+from app.core.helpers import guild_max_concurrency, user_max_concurrency
+from app.features.leveling.core import LevelingConfig, LevelingManager
 from app.features.leveling.rank_card import Font as RankCardFont, RankCard
 from app.util import AnsiColor, AnsiStringBuilder, UserView, converter
 from app.util.common import progress_bar
 from app.util.image import ImageFinder
-from app.util.types import CommandResponse
+from app.util.types import CommandResponse, Snowflake, TypedInteraction
 from config import Colors, Emojis
 
 if TYPE_CHECKING:
@@ -257,6 +257,150 @@ class RankCardExportView(UserView):
         await interaction.response.edit_message(content=self.render(), view=self)
 
 
+class AddLevelRoleModal(discord.ui.Modal):
+    level = discord.ui.TextInput(
+        label='<placeholder>',
+        placeholder='Enter a level, e.g. 10',
+        required=True,
+        min_length=1,
+        max_length=3,
+    )
+
+    def __init__(self, view: InteractiveLevelRolesView, *, role: discord.Role) -> None:
+        self.view = view
+        self.role = role
+        self.level.label = f'At what level should @{role.name} be assigned at?'
+        super().__init__(title="Configure Level Role", timeout=120)
+
+    async def on_submit(self, interaction: TypedInteraction) -> None:
+        level = int(self.level.value)
+        if not 1 <= level <= 500:
+            return await interaction.response.send_message('Level must be between 1 and 500.', ephemeral=True)
+
+        if self.role.id in self.view._roles and not await self.view.ctx.confirm(
+            content=f'The role {self.role.mention} is already configured as a level role. Would you like to overwrite it?',
+            timeout=30,
+            ephemeral=True,
+            true=f'Overwrite @{self.role.name}',
+            false='Cancel',
+        ):
+            return
+
+        self.view._roles[self.role.id] = level
+        self.view.remove_select.update()
+        await interaction.response.edit_message(embed=self.view.make_embed(), view=self.view)
+
+
+class RemoveLevelRolesSelect(discord.ui.Select['InteractiveLevelRolesView']):
+    def __init__(self, roles_ref: dict[Snowflake, int], role_names: dict[Snowflake, str]) -> None:
+        self._roles_ref = roles_ref
+        self._role_names = role_names
+        super().__init__(
+            placeholder='Remove level roles...',
+            min_values=1,
+            max_values=25,
+            row=1,
+        )
+        self.update()
+
+    def update(self) -> None:
+        self.options.clear()
+        self.options.extend(
+            discord.SelectOption(
+                label=f'Level {level:,}: @{self._role_names[role_id]}',
+                value=str(role_id),
+                emoji=Emojis.trash,
+            )
+            for role_id, level in sorted(self._roles_ref.items(), key=lambda pair: pair[1])
+        )
+        self.disabled = not self.options
+        # I don't know why this is necessary, but it is
+        if not self.options:
+            self.options.append(discord.SelectOption(label='-'))
+
+    async def callback(self, interaction: TypedInteraction) -> Any:
+        for value in self.values:
+            self._roles_ref.pop(int(value))
+        self.update()
+        await interaction.response.edit_message(embed=self.view.make_embed(), view=self.view)
+
+
+class RoleStackToggle(discord.ui.Button['InteractiveLevelRolesView']):
+    def __init__(self, current: bool) -> None:
+        super().__init__(
+            style=discord.ButtonStyle.primary,
+            label=f'{"Disable" if current else "Enable"} Role Stack',
+            row=2,
+        )
+
+    async def callback(self, interaction: TypedInteraction) -> None:
+        self.view._role_stack = new = not self.view._role_stack
+        self.label = f'{"Disable" if new else "Enable"} Role Stack'
+        await interaction.response.edit_message(embed=self.view.make_embed(), view=self.view)
+
+
+class InteractiveLevelRolesView(discord.ui.View):
+    def __init__(self, ctx: Context, *, config: LevelingConfig) -> None:
+        super().__init__(timeout=120)
+        self.ctx = ctx
+        self.config = config
+        self._roles = config.level_roles.copy()  # role_id => level
+        self._role_stack = config.role_stack
+        self._role_names: dict[Snowflake, str] = {}
+
+        self.remove_select = RemoveLevelRolesSelect(self._roles, self._role_names)
+        self.add_item(self.remove_select)
+        self.add_item(RoleStackToggle(self._role_stack))
+
+    def make_embed(self) -> discord.Embed:
+        embed = discord.Embed(color=Colors.primary, timestamp=self.ctx.now)
+        embed.set_author(name=f'{self.ctx.guild} Level Role Rewards', icon_url=self.ctx.guild.icon.url)
+        embed.set_footer(text='Make sure to save your changes by pressing the Save button!')
+
+        indicator = 'Users can accumulate multiple level roles.' if self._role_stack else 'Users can only have the highest level role.'
+        embed.add_field(name='Role Stack', value=f'{Emojis.enabled if self._role_stack else Emojis.disabled} {indicator}')
+
+        if not self._roles:
+            embed.description = 'You have not configured any level role rewards yet.'
+            return embed
+
+        embed.insert_field_at(
+            index=0,
+            name=f'Level Roles ({len(self._roles)}/25 slots)',
+            value='\n'.join(
+                f'- Level {level:,}: <@&{role_id}>'
+                for role_id, level in sorted(self._roles.items(), key=lambda pair: pair[1])
+            ),
+            inline=False
+        )
+        return embed
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return interaction.user.guild_permissions.manage_guild
+
+    @discord.ui.select(
+        cls=discord.ui.RoleSelect,
+        placeholder='Add a new level role reward...',
+        min_values=1,
+        max_values=1,
+        row=0,
+    )
+    async def add_level_role(self, interaction: TypedInteraction, select: discord.ui.RoleSelect) -> None:
+        role = select.values[0]
+        self._role_names[role.id] = role.name
+        await interaction.response.send_modal(AddLevelRoleModal(self, role=role))
+
+    @discord.ui.button(label='Save', style=discord.ButtonStyle.success, row=2)
+    async def save(self, interaction: TypedInteraction, _) -> None:
+        await self.config.update(level_roles=self._roles, role_stack=self._role_stack)
+        for child in self.children:
+            child.disabled = True
+
+        embed = self.make_embed()
+        embed.colour = Colors.success
+        await interaction.response.edit_message(embed=embed, view=self)
+
+
 class Leveling(Cog):
     """Interact with Lambda's robust and feature-packed leveling system."""
 
@@ -291,6 +435,7 @@ class Leveling(Cog):
         return f'{Emojis.enabled} Enabled' if toggle else f'{Emojis.disabled} Disabled'
 
     @level_config.command('module', aliases=('m', 'mod', 'toggle', 'status'), user_permissions=('manage_guild',))
+    @guild_max_concurrency(1)
     async def level_config_module(self, ctx: Context, toggle: bool = None) -> CommandResponse:
         """Toggles the leveling module on or off."""
         config = await self.manager.fetch_guild_config(ctx.guild.id)
@@ -302,6 +447,23 @@ class Leveling(Cog):
             await config.update(module_enabled=toggle)
 
         return f'Leveling module now set to **{self._enabled_text(toggle)}**.', REPLY
+
+    @level_config.command('roles', aliases=('role', 'r', 'reward', 'rewards'), user_permissions=('manage_guild',))
+    @guild_max_concurrency(1)
+    @module_enabled()
+    async def level_config_roles(self, ctx: Context) -> CommandResponse:
+        """Interactively configure level role rewards.
+
+        Level role rewards are roles that are automatically given to users when they reach a certain level.
+        Roles can be stacked (keep their previous roles) or not stacked (only have the highest role).
+        """
+        view = InteractiveLevelRolesView(ctx, config=await self.manager.fetch_guild_config(ctx.guild.id))
+        return (
+            'This interactive configurator can be used simutaneously by anyone with the *Manage Server* permission.',
+            view.make_embed(),
+            view,
+            REPLY,
+        )
 
     @command(aliases=('r', 'level', 'lvl', 'lv', 'xp', 'exp'), bot_permissions=('attach_files',))
     @cooldown(1, 5)
@@ -408,4 +570,4 @@ class Leveling(Cog):
         You can then invoke this command to import the configuration back into your rank card at a later time.
         """
         view = RankCardExportView(ctx, await self.manager.fetch_rank_card(ctx.author))
-        return view.render(), view, REPLY, {"suppress_embeds": True}
+        return view.render(), view, REPLY, dict(suppress_embeds=True)
