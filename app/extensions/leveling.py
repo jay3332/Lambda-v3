@@ -115,7 +115,7 @@ async def AlphaQuantity(_, argument: str) -> float:
     return argument
 
 
-class RankCardEditFlags(Flags):
+class RankCardEditFlags(Flags, compress_usage=True):
     font: RankCardFontConverter = flag(short='f')
 
     # Background
@@ -135,7 +135,11 @@ class RankCardEditFlags(Flags):
     # Theme
     primary_color: discord.Colour = flag(name='primary-color', alias='primary', short='p')
     secondary_color: discord.Colour = flag(name='secondary-color', alias='secondary', short='s')
-    tertiary_color: discord.Colour = flag(name='tertiary-color', alias='tertiary', short='t')
+    tertiary_color: discord.Colour = flag(
+        name='tertiary-color',
+        aliases=('tertiary', 'progress-bar-foreground', 'progress-bar-fg', 'pb-fg'),
+        short='t',
+    )
 
     # Overlay
     overlay_color: discord.Colour = flag(name='overlay-color', aliases=('overlay', 'overlay-colour', 'ol'), short='o')
@@ -147,8 +151,12 @@ class RankCardEditFlags(Flags):
     )
 
     # Avatar
-    avatar_color: discord.Colour = flag(name='avatar-color', aliases=('avatar-colour', 'ac'), short='a')
-    avatar_alpha: AlphaQuantity = flag(name='avatar-alpha', alias='aa')
+    avatar_border_color: discord.Colour = flag(
+        name='avatar-border-color',
+        aliases=('avatar-border-colour', 'avatar-color', 'avatar-colour', 'ac'),
+        short='a',
+    )
+    avatar_border_alpha: AlphaQuantity = flag(name='avatar-border-alpha', aliases=('aa', 'aba', 'avatar-alpha'))
     avatar_border_radius: between(0, 139, 'border radius') = flag(
         name='avatar-border-radius',
         aliases=('abr', 'avatar-radius', 'ar', 'avatar-r'),
@@ -257,17 +265,34 @@ class Leveling(Cog):
     async def rank_card_edit(self, ctx: Context, *, flags: RankCardEditFlags) -> CommandResponse:
         """Edits your rank card. See `{PREFIX}help rank-card` to view all subcommands, else this command will update everything in one go.
 
-        Every configuration option in this command will be passed via flags, see the command signature above for more information.
+        Every configuration option in this command is passed via flags, see the command signature above for more information.
+        All flags are optional, and if you don't pass in a flag, the corresponding value will not be updated.
 
-        Flag Information:
-        - The `--background` flag ONLY takes URLs as arguments. Pass in `attachment://filename` to reference and attachment.
-        - The `--background-blur` flag only accepts arguments between 0 and 20.
-        - The `--overlay-border-radius` flag only accepts arguments between 0 and 80.
-        - The `--avatar-border-radius` flag only accepts arguments between 0 and 139.
-        - You MUST put a `#` before the hex value (if you pass in hex) in all flags with names ending in "color".\\*
-        - All flags with names ending in "alpha" take floating-point numbers from 0.0 to 1.0.
+        Flags:
+        - `--background <url>`: The new background image, specified by its URL. *ONLY* takes URLs as arguments. Pass in `attachment://filename` to reference an attachment.
+        - `--background-color <hex>`: The new background color, specified by its hex code. [see note 1]
+        - `--background-alpha <alpha>`: The opacity of the background image. [see note 2]
+        - `--background-blur <blur>`: The factor to blur the background image by. Must be between 0 and 20.
+        - `--primary-color <hex>`: The new primary color, specified by its hex code. [see note 1]
+          This is the primary *text* color (username, level number, XP number, and rank number).
+        - `--secondary-color <hex>`: The new secondary color, specified by its hex code. [see note 1]
+          This is the secondary *text* color ("Level" and "RANK" labels, discriminator if applicable, and max XP number).
+        - `--tertiary-color <hex>`: The new tertiary color, specified by its hex code. [see note 1]
+          This is the color of the progress bar *foreground*, i.e. the "progressing" or "moving" part of the progress bar.
+        - `--overlay-color <hex>`: The new color of the large overlay over the background, specified by its hex code. [see note 1]
+        - `--overlay-alpha <alpha>`: The opacity of the large overlay over the background. [see note 2]
+        - `--overlay-border-radius <radius>`: The roundedness of the large overlay over the background, in pixels. Must be between 0 and 80.
+        - `--avatar-border-color <hex>`: The new color of the avatar "island", specified by its hex code. [see note 1]
+        - `--avatar-border-alpha <alpha>`: The opacity of the avatar "island". [see note 2]
+        - `--avatar-border-radius <radius>`: The roundedness of the avatar "island" and the avatar itself, in pixels. Must be between 0 and 139.
+        - `--progress-bar-color <hex>`: The new color of the progress bar *background*. [see note 1]
+        - `--progress-bar-alpha <alpha>`: The opacity of the progress bar *background*. [see note 2]
 
-        \\* If you aren't passing in hex you may disregard this message.
+        Notes:
+        1. You MUST put a `#` before the hex value (if you pass in hex) in all flags with names ending in "color".
+           If you aren't passing in hex you may disregard this message.
+        2. All flags with names ending in "alpha" take floating-point numbers from 0.0 to 1.0, inclusive.
+           0.0 is fully transparent, and 1.0 is fully opaque.
         """
         kwargs = {
             k: v.value if k.endswith('color') or isinstance(v, RankCardFont) else v

@@ -265,9 +265,10 @@ class RankCard(BaseRankCard):
                     width, _ = pilmoji.getsize(username, font)  # type: ignore
 
                 # Discriminator
-                font = get_font(size=50)
-                text = '#' + user.discriminator
-                pilmoji.text((409 + width, 194), text, (*self.secondary_color[:3], 190), font)  # type: ignore
+                if user.discriminator != '0':
+                    font = get_font(size=50)
+                    text = '#' + user.discriminator
+                    pilmoji.text((409 + width, 194), text, (*self.secondary_color[:3], 190), font)  # type: ignore
 
                 # Rank
                 font = get_font(size=60)

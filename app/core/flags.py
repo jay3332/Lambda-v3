@@ -231,13 +231,22 @@ class FlagMeta(type, Generic[T]):
     if TYPE_CHECKING:
         _flags: dict[str, Flag[T]]
         _parser: ArgumentParser
+        _compress_usage: bool
 
-    def __new__(mcs: Type[FlagMetaT], name: str, bases: tuple[Type[Any], ...], attrs: dict[str, Any]) -> FlagMetaT:
+    def __new__(
+        mcs: Type[FlagMetaT],
+        name: str,
+        bases: tuple[Type[Any], ...],
+        attrs: dict[str, Any],
+        *,
+        compress_usage: bool = False,
+    ) -> FlagMetaT:
         cls = super().__new__(mcs, name, bases, attrs)
         cls.__doc__ = inspect.cleandoc(inspect.getdoc(cls))
 
         cls._flags = flags = _resolve_flags(attrs)
         cls._parser = parser = ArgumentParser(description=cls.__doc__)
+        cls._compress_usage = compress_usage
 
         # noinspection PyShadowingNames
         for flag in flags.values():

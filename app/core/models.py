@@ -311,6 +311,14 @@ class Command(commands.Command):
             annotation, greedy, optional, origin = Command._disect_param(param)
 
             if isinstance(annotation, FlagMeta) and self.custom_flags:
+                if annotation._compress_usage:
+                    required = any(flag.required for flag in self.custom_flags.walk_flags())
+                    start, end = '<>' if required else '[]'
+                    result.append(start, color=AnsiColor.gray, bold=True)
+                    result.append(name + '...', color=AnsiColor.yellow if required else AnsiColor.blue)
+                    result.append(end + ' ', color=AnsiColor.gray, bold=True)
+                    continue
+
                 for flag in self.custom_flags.walk_flags():
                     start, end = '<>' if flag.required else '[]'
                     base = '--' + flag.name
