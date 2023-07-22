@@ -84,7 +84,8 @@ resolved_token: str = beta_token if beta else token
 lavalink_nodes: Collection[tuple[str, int, str | None, bool]] = [
     ('lavalink.gaproknetwork.xyz', 2333, 'gaproklavalink', False),
 ] if beta else [
-    ('127.0.0.1', 2333, 'youshallnotpass', False),
+    # ('127.0.0.1', 2333, 'youshallnotpass', False),
+    ('lavalink.api.timelessnesses.me', '80', 'youshallnotpass', False),
 ]
 
 

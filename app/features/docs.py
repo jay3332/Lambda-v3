@@ -299,7 +299,7 @@ class RTFMDocumentationSelect(discord.ui.Select):
             entry = await self.inventory.get_entry(name)
 
         embed = self.form_embed(self.ctx, entry)
-        await interaction.edit_original_message(embed=embed)
+        await interaction.edit_original_response(embed=embed)
 
 
 class RelatedEntriesSelect(discord.ui.Select):
@@ -333,7 +333,7 @@ class RelatedEntriesSelect(discord.ui.Select):
             entry = await self.inventory.get_entry(name)
 
         embed = RTFMDocumentationSelect.form_embed(self.ctx, entry)
-        await interaction.edit_original_message(embed=embed)
+        await interaction.edit_original_response(embed=embed)
 
 
 class DocumentationManager:

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from discord.guild import VocalGuildChannel
 
     from app.core import Command, Context
-    from app.util.types import CommandResponse, OptionalCommandResponse
+    from app.util.types import CommandResponse, OptionalCommandResponse, TypedInteraction
 
     class MusicContext(Context):
         voice_client: Player
@@ -46,7 +46,7 @@ class VoteSkip(discord.ui.Button):
         )
         self.player: Player = player
 
-    async def callback(self, interaction: discord.Interaction) -> None:
+    async def callback(self, interaction: TypedInteraction) -> None:
         if not self.player.queue.current:
             return await interaction.response.send_message(
                 'I\'m not playing any tracks that you can skip right now.',
@@ -69,7 +69,7 @@ class VoteSkip(discord.ui.Button):
 
             self.disabled = True
             self.label = 'Vote to Skip (Passed)'
-            await interaction.edit_original_message(
+            await interaction.edit_original_response(
                 view=self.view,
             )
             await self.player.ctx.send(
@@ -113,7 +113,7 @@ class VolumeChangeModal(discord.ui.Modal, title='Change Volume'):
             ephemeral=True,
         )
 
-    async def on_submit(self, interaction: discord.Interaction) -> None:
+    async def on_submit(self, interaction: TypedInteraction) -> None:
         try:
             volume = float(self.volume.value.removesuffix('%'))
         except ValueError:
@@ -159,7 +159,7 @@ class LoopTypeSelect(discord.ui.Select):
             content=f'Updated loop type to {emoji} **{value.name.title()}**. You can dismiss this now.',  # type: ignore
             view=None,
         )
-        await self.interaction.edit_original_message(
+        await self.interaction.edit_original_response(
             embed=self.original.build_embed(),
             view=self.original,
         )
@@ -293,7 +293,7 @@ class DJControlsView(discord.ui.View):
         button.disabled = self.player.queue.current is None
         await self.player.skip()
 
-        await self.original_interaction.edit_original_message(
+        await self.original_interaction.edit_original_response(
             embed=self.build_embed(),
             view=self,
         )

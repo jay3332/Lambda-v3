@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
     from discord import ClientUser, Guild, Member, Message, User, VoiceProtocol
     from discord.abc import Messageable
-    from discord.interactions import InteractionChannel
+    from discord.interactions import InteractionChannel, InteractionResponse
 
     from app.core.bot import Bot
     from app.core.helpers import Param
@@ -129,6 +129,7 @@ class RankCard(TypedDict):
 class TypedInteraction(Interaction):
     client: Bot
     channel: InteractionChannel
+    response: InteractionResponse
 
 
 # noinspection PyPropertyDefinition
