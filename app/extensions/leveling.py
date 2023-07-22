@@ -212,7 +212,7 @@ class RankCardExportView(UserView):
             buffer.append(self.clean_prefix, color=AnsiColor.white, bold=True)
             buffer.append('rank-card edit', color=AnsiColor.green).newline()
 
-        for name, value in self.rank_card.data:
+        for name, value in self.rank_card.data.items():
             if name == 'user_id':
                 continue
             if self._show_command_header:
