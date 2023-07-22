@@ -304,8 +304,7 @@ class RemoveLevelRolesSelect(discord.ui.Select['InteractiveLevelRolesView']):
         self.update()
 
     def update(self) -> None:
-        self.options.clear()
-        self.options.extend(
+        self.options = [
             discord.SelectOption(
                 label=f'Level {level:,}',
                 description=f'@{self._role_names[role_id]}',
@@ -313,11 +312,8 @@ class RemoveLevelRolesSelect(discord.ui.Select['InteractiveLevelRolesView']):
                 emoji=Emojis.trash,
             )
             for role_id, level in sorted(self._roles_ref.items(), key=lambda pair: pair[1])
-        )
+        ]
         self.disabled = not self.options
-        # I don't know why this is necessary, but it is
-        if not self.options:
-            self.options.append(discord.SelectOption(label='-'))
 
     async def callback(self, interaction: TypedInteraction) -> Any:
         for value in self.values:
