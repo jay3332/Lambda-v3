@@ -156,14 +156,19 @@ class HelpCommand(commands.HelpCommand):
     context: Context
 
     def __init__(self, **attrs: Any) -> None:
-        super().__init__(command_attrs=dict(
-            aliases=('h',),
-            help='Shows help about the bot.',
-        ), **attrs)
+        super().__init__(
+            command_attrs=dict(
+                aliases=('h',),
+                help='Shows help about the bot.',
+            ),
+            **attrs,
+        )
 
     @staticmethod
     def format_commands(cmds: list[Command]) -> str:
-        return '\u2002'.join(f'`{cmd.qualified_name}`' for cmd in sorted(cmds, key=lambda c: c.qualified_name))
+        return '\u2002'.join(
+            f'`{cmd.qualified_name}`' for cmd in sorted(cmds, key=lambda c: c.qualified_name) if not cmd.hidden
+        )
 
     def get_bot_mapping(self) -> dict[Cog, list[Command]]:
         mapping = super().get_bot_mapping()
