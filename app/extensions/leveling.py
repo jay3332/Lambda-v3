@@ -269,7 +269,7 @@ class AddLevelRoleModal(discord.ui.Modal):
     def __init__(self, view: InteractiveLevelRolesView, *, role: discord.Role) -> None:
         self.view = view
         self.role = role
-        self.level.label = f'At what level should @{role.name} be assigned at?'
+        self.level.label = 'At what level will this role be assigned at?'
         super().__init__(title="Configure Level Role", timeout=120)
 
     async def on_submit(self, interaction: TypedInteraction) -> None:
