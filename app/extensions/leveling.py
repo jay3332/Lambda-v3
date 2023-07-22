@@ -295,12 +295,7 @@ class RemoveLevelRolesSelect(discord.ui.Select['InteractiveLevelRolesView']):
     def __init__(self, roles_ref: dict[Snowflake, int], role_names: dict[Snowflake, str]) -> None:
         self._roles_ref = roles_ref
         self._role_names = role_names
-        super().__init__(
-            placeholder='Remove level roles...',
-            min_values=1,
-            max_values=25,
-            row=1,
-        )
+        super().__init__(placeholder='Remove level roles...', row=1)
         self.update()
 
     def update(self) -> None:
@@ -317,6 +312,7 @@ class RemoveLevelRolesSelect(discord.ui.Select['InteractiveLevelRolesView']):
         # Placeholder if no options
         if self.disabled:
             self.options = [discord.SelectOption(label='.')]
+        self.max_values = len(self.options)
 
     async def callback(self, interaction: TypedInteraction) -> Any:
         for value in self.values:
