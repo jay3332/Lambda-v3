@@ -373,28 +373,14 @@ class InteractiveLevelRolesView(discord.ui.View):
     )
     async def add_level_role(self, interaction: TypedInteraction, select: discord.ui.RoleSelect) -> None:
         role = select.values[0]
-
-        async def hook(itx: TypedInteraction):
-            await itx.response.send_modal(AddLevelRoleModal(self, role=role))
-
-        if role.id in self._roles:
-            return await self.ctx.confirm(
-                content=f'The role {role.mention} is already configured as a level role. Would you like to overwrite it?',
-                timeout=30,
-                interaction=interaction,
-                ephemeral=True,
-                true=f'Overwrite @{role.name}',
-                false='Cancel',
-                hook=hook,
-            )
-
-        await hook(interaction)
+        await interaction.response.send_modal(AddLevelRoleModal(self, role=role))
 
     @discord.ui.button(label='Save', style=discord.ButtonStyle.success, row=2)
     async def save(self, interaction: TypedInteraction, _) -> None:
         await self.config.update(level_roles=self._roles, role_stack=self._role_stack)
         for child in self.children:
             child.disabled = True
+        self.stop()
 
         embed = self.make_embed()
         embed.colour = Colors.success
