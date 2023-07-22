@@ -283,9 +283,9 @@ class AddLevelRoleModal(discord.ui.Modal):
 
 
 class RemoveLevelRolesSelect(discord.ui.Select['InteractiveLevelRolesView']):
-    def __init__(self, roles_ref: dict[Snowflake, int], role_names: dict[Snowflake, str]) -> None:
+    def __init__(self, roles_ref: dict[Snowflake, int], ctx: Context) -> None:
         self._roles_ref = roles_ref
-        self._role_names = role_names
+        self._ctx = ctx
         super().__init__(placeholder='Remove level roles...', row=1)
         self.update()
 
@@ -293,7 +293,7 @@ class RemoveLevelRolesSelect(discord.ui.Select['InteractiveLevelRolesView']):
         self.options = [
             discord.SelectOption(
                 label=f'Level {level:,}',
-                description=f'@{self._role_names[role_id]}',
+                description=f'@{self._ctx.guild.get_role(role_id)}',
                 value=str(role_id),
                 emoji=Emojis.trash,
             )
@@ -333,9 +333,8 @@ class InteractiveLevelRolesView(discord.ui.View):
         self.config = config
         self._roles = config.level_roles.copy()  # role_id => level
         self._role_stack = config.role_stack
-        self._role_names: dict[Snowflake, str] = {}
 
-        self.remove_select = RemoveLevelRolesSelect(self._roles, self._role_names)
+        self.remove_select = RemoveLevelRolesSelect(self._roles, ctx)
         self.add_item(self.remove_select)
         self.add_item(RoleStackToggle(self._role_stack))
 
