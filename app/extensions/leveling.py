@@ -307,7 +307,8 @@ class RemoveLevelRolesSelect(discord.ui.Select['InteractiveLevelRolesView']):
         self.options.clear()
         self.options.extend(
             discord.SelectOption(
-                label=f'Level {level:,}: @{self._role_names[role_id]}',
+                label=f'Level {level:,}',
+                description=f'@{self._role_names[role_id]}',
                 value=str(role_id),
                 emoji=Emojis.trash,
             )
