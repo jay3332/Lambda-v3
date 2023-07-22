@@ -218,8 +218,15 @@ class RankCardExportView(UserView):
             if self._show_command_header:
                 buffer.append('  ')
 
+            if name.endswith('_color'):
+                value = f'#{value:06x}'
+            elif name == 'font':
+                value = str(RankCardFont(value))
+            else:
+                value = str(value)
+
             buffer.append(f"--{name.replace('_', '-')} ", color=AnsiColor.blue)
-            buffer.append(str(value), color=AnsiColor.cyan, bold=True).newline()
+            buffer.append(value, color=AnsiColor.cyan, bold=True).newline()
 
         match self._codeblock_style:
             case RankCardExportCodeblockStyle.none:
