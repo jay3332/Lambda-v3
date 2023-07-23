@@ -1262,7 +1262,7 @@ async def _send_message(
         data['embeds'] = []
 
     if data.pop('reply', True):
-        data['reference'] = reference
+        data['message_reference'] = reference
 
     if buttons := data.pop('buttons', None):
         data['view'] = view = discord.ui.View(timeout=30)
@@ -1282,11 +1282,14 @@ async def _send_message(
 
             new.callback = callback
 
-    channel = bot.get_partial_messageable(channel_id)
+    params = handle_message_parameters(**send_kwargs, **data)
     try:
-        await channel.send(**send_kwargs, **data)
+        response = await bot.http.send_message(channel_id, params=params)
     except discord.HTTPException:
         pass
+    else:
+        if 'view' in data:
+            bot._connection.store_view(data['view'], int(response['id']))
 
 
 async def execute_python_tag(
