@@ -290,15 +290,15 @@ class RankCard(BaseRankCard):
                 pilmoji.text((1156 - width - offset, 60), 'RANK', self.secondary_color, font)
 
                 # XP
-                font = get_font(size=36)
+                font = get_font(size=40)
                 text = f'{xp:,} XP'
                 pilmoji.text((406, 361), text, self.primary_color, font)
                 offset, _ = pilmoji.getsize(text, font)
 
                 # Max XP
-                font = get_font(size=33)
+                font = get_font(size=36)
                 text = f' / {max_xp:,}'
-                pilmoji.text((406 + offset, 364), text, self.secondary_color, font)
+                pilmoji.text((406 + offset, 365), text, self.secondary_color, font)
 
             with background:
                 buffer = BytesIO()

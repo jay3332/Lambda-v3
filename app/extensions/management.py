@@ -6,7 +6,7 @@ from typing import Literal, TYPE_CHECKING
 import discord
 from discord.ext import commands
 
-from app.core import Cog, Context, Flags, command, cooldown, store_true
+from app.core import Cog, Context, Flags, command, cooldown, flag, store_true
 from app.core.helpers import BAD_ARGUMENT
 from app.util.common import humanize_duration
 from app.util.converters import IntervalConverter
@@ -20,7 +20,7 @@ __all__ = ('Management',)
 
 class SlowmodeFlags(Flags):
     silent: bool = store_true(short='s', alias='quiet')
-    reset_after: IntervalConverter = store_true(
+    reset_after: IntervalConverter = flag(
         name='reset-after',
         short='r',
         aliases=('reset', 'temporary', 'temp', 'tmp'),
