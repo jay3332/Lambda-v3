@@ -5,7 +5,7 @@ import functools
 from collections import OrderedDict
 from enum import Enum
 from io import BytesIO
-from typing import Any, ClassVar, Final, TYPE_CHECKING, Type, overload
+from typing import Any, Final, TYPE_CHECKING, Type, overload
 
 from PIL import Image, ImageFilter
 from aiohttp import ClientTimeout
@@ -162,7 +162,7 @@ class RankCard(BaseRankCard):
 
     @executor_function
     def prepare_background(self, stream: BytesIO | None = None, size: tuple[int, int] = (1390, 600)) -> Image.Image:
-        base = Image.new('RGBA', (1390, 600), self.background_color)
+        base = Image.new('RGBA', size, self.background_color)
         width, height = size
         aspect_ratio = height / width  # inversed
 
@@ -179,7 +179,7 @@ class RankCard(BaseRankCard):
                 x_offset = int((im.width - target) / 2)
                 im = im.crop((x_offset, 0, im.width - x_offset, im.height))
 
-            im = im.resize((1390, 600))
+            im = im.resize(size)
 
             if self.background_blur > 0:
                 im = im.filter(ImageFilter.GaussianBlur(radius=self.background_blur))
