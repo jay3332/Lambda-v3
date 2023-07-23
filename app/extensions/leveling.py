@@ -385,6 +385,12 @@ class InteractiveLevelRolesView(discord.ui.View):
         embed.colour = Colors.warning
         await interaction.response.edit_message(content='Updating roles...', embed=embed, view=self)
 
+        # Update everyone's roles
+        manager = self.ctx.cog.manager
+        await manager.ensure_cached_user_stats(self.ctx.guild)
+        for record in manager.walk_stats(self.ctx.guild):
+            await record.update_roles(record.level)
+
         embed.colour = Colors.success
         await interaction.edit_original_response(content='Saved and updated level roles.', embed=embed, view=self)
         self.stop()
