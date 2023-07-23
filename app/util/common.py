@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from datetime import timedelta
 from functools import wraps
 from inspect import iscoroutinefunction
 from typing import Any, Awaitable, Callable, Iterable, ParamSpec, TYPE_CHECKING, Type, TypeVar
@@ -125,8 +126,10 @@ def humanize_small_duration(seconds: float) -> str:
     return "<1 ps"
 
 
-def humanize_duration(seconds: float, depth: int = 3) -> str:
+def humanize_duration(seconds: float | timedelta, depth: int = 3) -> str:
     """Formats a duration (in seconds) into one that is human-readable."""
+    if isinstance(seconds, timedelta):
+        seconds = seconds.total_seconds()
     if seconds < 1:
         return '<1 second'
 

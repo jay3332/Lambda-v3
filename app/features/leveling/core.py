@@ -314,6 +314,10 @@ class LevelingRecord:
         )
         self._from_data(data)  # type: ignore
 
+    def __repr__(self) -> str:
+        rank = '' if self.rank is None else f' rank={self.rank}'
+        return f'<LevelingRecord user.id={self.user.id} guild.id={self.guild.id} level={self.level} xp={self.xp}{rank}>'
+
 
 class LevelingManager:
     """Manages Lambda's leveling system."""
