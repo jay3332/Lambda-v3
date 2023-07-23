@@ -33,7 +33,12 @@ class Management(Cog):
     async def cog_check(self, ctx: Context) -> bool:
         return ctx.guild is not None
 
-    @command('slowmode', aliases=('slow', 'sm'), user_permissions=('manage_channels',))
+    @command(
+        'slowmode',
+        aliases=('slow', 'sm'),
+        user_permissions=('manage_channels',),
+        bot_permissions=('manage_channels',),
+    )
     @cooldown(3, 3, commands.BucketType.member)
     async def slowmode(
         self,
@@ -73,7 +78,7 @@ class Management(Cog):
         )
         ctx.bot.loop.create_task(ctx.thumbs())
 
-        message = f'Slowmode interval of {channel.name} set to **{humanize_duration(interval)}**.'
+        message = f'Slowmode interval of {channel.mention} set to **{humanize_duration(interval)}**.'
 
         if reset_after := flags.reset_after:
             await ctx.bot.timers.create(when=reset_after, event='reset_slowmode', channel_id=channel.id)
