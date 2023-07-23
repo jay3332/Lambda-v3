@@ -55,7 +55,7 @@ class _PageInputButton(Button['PaginatorView']):
 class _PageInputModal(Modal, title='Select Page'):
     page: TextInput = TextInput(
         label='Which page would you like to jump to?',
-        placeholder='Enter an integer...',
+        placeholder='Enter a page number between 1 and %s...',
         min_length=1,
         max_length=5,
         required=True,
@@ -65,6 +65,7 @@ class _PageInputModal(Modal, title='Select Page'):
         super().__init__()
         self.view: PaginatorView = view
         self.paginator: Paginator = view.paginator
+        self.page.placeholder %= f'{self.paginator.max_pages:,}'
 
     async def on_submit(self, interaction: Interaction) -> None:
         try:
@@ -77,7 +78,7 @@ class _PageInputModal(Modal, title='Select Page'):
 
         if not 1 <= page <= self.paginator.max_pages:
             return await interaction.response.send_message(
-                content=f'Invalid page number. (Page number should be between 1 and {self.paginator.max_pages}.)',
+                content=f'Invalid page number. (Page number should be between 1 and {self.paginator.max_pages:,}.)',
                 ephemeral=True,
             )
 

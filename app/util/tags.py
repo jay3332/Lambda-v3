@@ -1245,7 +1245,7 @@ def _transform_template() -> str:
 
 
 _PYTAG_TEMPLATE: str = _transform_template()
-_CODE_EVALUATION_ENDPOINT: Final[str] = 'https://eval.lambdabot.cf/eval'
+_CODE_EVALUATION_ENDPOINT: Final[str] = 'http://127.0.0.1:8060/eval'
 _EXTRACTION_REGEX: Final[re.Pattern[str]] = re.compile(r'\x0e\x00:\x01(.+)\x01\x02\r?\n')
 
 
@@ -1282,14 +1282,11 @@ async def _send_message(
 
             new.callback = callback
 
-    params = handle_message_parameters(**send_kwargs, **data)
+    channel = bot.get_partial_messageable(channel_id)
     try:
-        response = await bot.http.send_message(channel_id, params=params)
+        await channel.send(**send_kwargs, **data)
     except discord.HTTPException:
         pass
-    else:
-        if 'view' in data:
-            bot._connection.store_view(data['view'], int(response['id']))
 
 
 async def execute_python_tag(
