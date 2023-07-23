@@ -1262,7 +1262,7 @@ async def _send_message(
         data['embeds'] = []
 
     if data.pop('reply', True):
-        data['message_reference'] = reference
+        data['reference'] = reference
 
     if buttons := data.pop('buttons', None):
         data['view'] = view = discord.ui.View(timeout=30)
