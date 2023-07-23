@@ -373,6 +373,20 @@ class InteractiveLevelRolesView(discord.ui.View):
     )
     async def add_level_role(self, interaction: TypedInteraction, select: discord.ui.RoleSelect) -> None:
         role = select.values[0]
+        if role.is_default() or role.managed:
+            return await interaction.response.send_message(
+                f'That role is a default role or managed role, which means I am unable to assign it.\n'
+                'Try using a different role or creating a new one.',
+                ephemeral=True,
+            )
+
+        if not role.is_assignable():
+            return await interaction.response.send_message(
+                f'That role is lower than or equal to my top role ({self.ctx.me.top_role.mention}) in the role hierarchy, '
+                f'which means I am unable to assign it.\nTry moving the role to be lower than {self.ctx.me.top_role.mention}, '
+                'and then try again.',
+                ephemeral=True,
+            )
         await interaction.response.send_modal(AddLevelRoleModal(self, role=role))
 
     @discord.ui.button(label='Save', style=discord.ButtonStyle.success, row=2)
