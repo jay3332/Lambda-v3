@@ -63,7 +63,10 @@ async def RankCardFontConverter(_, argument: str) -> RankCardFont:
 
 
 @converter
-async def ImageUrlConverter(ctx: Context, argument: str) -> str:
+async def ImageUrlConverter(ctx: Context, argument: str) -> str | None:
+    if argument.lower() in ('none', 'remove', 'reset'):
+        return None
+
     if argument.startswith('attachment://'):
         filename = argument[13:]
         argument = discord.utils.get(ctx.message.attachments, url=filename)
@@ -545,7 +548,8 @@ class Leveling(Cog):
         All flags are optional, and if you don't pass in a flag, the corresponding value will not be updated.
 
         Flags:
-        - `--background <url>`: The new background image, specified by its URL. *ONLY* takes URLs as arguments. Pass in `attachment://filename` to reference an attachment.
+        - `--background <url>`: The new background image, specified by its URL. *ONLY* takes URLs as arguments.
+          Pass in `attachment://filename` to reference an attachment. Pass in `none` to remove the background image.
         - `--background-color <hex>`: The new background color, specified by its hex code. [see note 1]
         - `--background-alpha <alpha>`: The opacity of the background image. [see note 2]
         - `--background-blur <blur>`: The factor to blur the background image by. Must be between 0 and 20.
@@ -588,11 +592,14 @@ class Leveling(Cog):
 
     @rank_card.command('export', aliases=('ex', 'flags', 'freeze'))
     @cooldown(1, 3)
-    async def rank_card_export(self, ctx: Context) -> CommandResponse:
-        """Sends your current rank card configuration as command flags.
+    async def rank_card_export(self, ctx: Context, *, user: discord.Member = None) -> CommandResponse:
+        """Sends your current rank card configuration (or that of the specified user's) as command flags.
 
         This exports your current rank card configuration as an invocation of `{PREFIX}rank-card edit`.
         You can then invoke this command to import the configuration back into your rank card at a later time.
+
+        Arguments:
+        - `user`: The user to export the rank card configuration of. Defaults to yourself.
         """
-        view = RankCardExportView(ctx, await self.manager.fetch_rank_card(ctx.author))
+        view = RankCardExportView(ctx, await self.manager.fetch_rank_card(user or ctx.author))
         return view.render(), view, REPLY, dict(suppress_embeds=True)
