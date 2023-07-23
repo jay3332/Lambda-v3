@@ -5,7 +5,7 @@ import json
 import math
 import random
 from collections import OrderedDict, defaultdict
-from typing import Any, NamedTuple, TYPE_CHECKING, TypeVar, overload
+from typing import Any, Iterable, NamedTuple, TYPE_CHECKING, TypeVar, overload
 
 import discord
 from discord.abc import Snowflake as HasId
@@ -324,6 +324,7 @@ class LevelingManager:
         self.configs: dict[Snowflake, LevelingConfig] = {}
         self.rank_cards: dict[Snowflake, RankCard] = {}
         self.stats: defaultdict[Snowflake, dict[Snowflake, LevelingRecord]] = defaultdict(dict)
+        self._cached: set[Snowflake] = set()
 
     async def _load_data(self) -> None:
         for entry in await self.bot.db.get_all_leveling_configurations():
@@ -340,6 +341,29 @@ class LevelingManager:
                 config=self.configs[member.guild.id],
             )
             return res
+
+    async def ensure_cached_user_stats(self, guild: discord.Guild) -> None:
+        if guild.id in self._cached:
+            return
+
+        self._cached.add(guild.id)
+        data = await self.bot.db.get_all_leveling_stats(guild.id)
+        for user_id, entry in data.items():
+            member = guild.get_member(user_id)
+            if not member:
+                continue
+
+            self.stats[guild.id][user_id] = LevelingRecord(
+                user=member,
+                bot=self.bot,
+                config=self.configs[guild.id],
+            )
+
+    def walk_stats(self, guild: HasId | int) -> Iterable[LevelingRecord]:
+        if not isinstance(guild, int):
+            guild = guild.id
+
+        return self.stats[guild].values()
 
     async def fetch_guild_config(self, guild: HasId | int) -> LevelingConfig:
         if not isinstance(guild, int):

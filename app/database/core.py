@@ -10,7 +10,7 @@ from config import DatabaseConfig
 from .migrations import Migrator
 
 if TYPE_CHECKING:
-    from app.util.types import LevelingConfig, LevelingData, RankCard
+    from app.util.types import LevelingConfig, LevelingData, RankCard, Snowflake
 
     DatabaseT = TypeVar('DatabaseT', bound='_Database')
     RecordT = TypeVar('RecordT', bound='BaseRecord')
@@ -136,6 +136,26 @@ class Database(_Database):
 
             await connection.execute(query, user_id, guild_id)
             return await self.get_leveling_stats(user_id, guild_id)
+
+    async def get_all_leveling_stats(self, guild_id: int, connection: asyncpg.Connection | None = None) -> dict[Snowflake, LevelingData]:
+        async with connection or self.acquire() as connection:
+            query = """
+                    SELECT 
+                        user_id, 
+                        level, 
+                        xp, 
+                        RANK() OVER (
+                            ORDER BY 
+                                level DESC, 
+                                xp DESC
+                        ) AS rank 
+                    FROM 
+                        levels 
+                    WHERE 
+                        guild_id = $1
+                    """
+
+            return {record['user_id']: record for record in await connection.fetchrow(query, guild_id)}
 
     async def get_rank_card(self, user_id: int, *, connection: asyncpg.Connection | None = None) -> RankCard:
         async with connection or self.acquire() as connection:

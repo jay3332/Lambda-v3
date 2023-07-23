@@ -380,11 +380,14 @@ class InteractiveLevelRolesView(discord.ui.View):
         await self.config.update(level_roles=self._roles, role_stack=self._role_stack)
         for child in self.children:
             child.disabled = True
-        self.stop()
 
         embed = self.make_embed()
+        embed.colour = Colors.warning
+        await interaction.response.edit_message(content='Updating roles...', embed=embed, view=self)
+
         embed.colour = Colors.success
-        await interaction.response.edit_message(embed=embed, view=self)
+        await interaction.edit_original_response(content='Saved and updated level roles.', embed=embed, view=self)
+        self.stop()
 
 
 class Leveling(Cog):
