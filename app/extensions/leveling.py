@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from difflib import SequenceMatcher
 from enum import Enum
 from io import BytesIO
@@ -15,13 +14,15 @@ from app.core.helpers import BAD_ARGUMENT, guild_max_concurrency, user_max_concu
 from app.features.leveling.core import LevelingConfig, LevelingManager
 from app.features.leveling.rank_card import Font as RankCardFont, RankCard
 from app.util import AnsiColor, AnsiStringBuilder, UserView, converter
-from app.util.common import progress_bar
+from app.util.common import progress_bar, sentinel
 from app.util.image import ImageFinder
 from app.util.types import CommandResponse, Snowflake, TypedInteraction
 from config import Colors, Emojis
 
 if TYPE_CHECKING:
     T = TypeVar('T')
+
+RESET_BACKGROUND = sentinel('RESET_BACKGROUND')
 
 
 def module_enabled() -> Callable[[T], T]:
@@ -63,9 +64,9 @@ async def RankCardFontConverter(_, argument: str) -> RankCardFont:
 
 
 @converter
-async def ImageUrlConverter(ctx: Context, argument: str) -> str | None:
+async def ImageUrlConverter(ctx: Context, argument: str) -> str | object:
     if argument.lower() in ('none', 'remove', 'reset'):
-        return None
+        return RESET_BACKGROUND
 
     if argument.startswith('attachment://'):
         filename = argument[13:]
@@ -574,8 +575,13 @@ class Leveling(Cog):
         2. All flags with names ending in "alpha" take floating-point numbers from 0.0 to 1.0, inclusive.
            0.0 is fully transparent, and 1.0 is fully opaque.
         """
+        def transform(k: str, v: Any) -> str | None:
+            if v is RESET_BACKGROUND:
+                return None
+            return v.value if k.endswith('color') or isinstance(v, RankCardFont) else v
+
         kwargs = {
-            k: v.value if k.endswith('color') or isinstance(v, RankCardFont) else v
+            k: transform(k, v)
             for k, v in flags  # type: ignore
             if v is not None
         }
