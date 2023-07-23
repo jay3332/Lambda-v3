@@ -10,7 +10,7 @@ import discord
 from discord.ext import commands
 
 from app.core import Cog, Context, Flags, REPLY, command, cooldown, flag, group, store_true
-from app.core.helpers import guild_max_concurrency, user_max_concurrency
+from app.core.helpers import BAD_ARGUMENT, guild_max_concurrency, user_max_concurrency
 from app.features.leveling.core import LevelingConfig, LevelingManager
 from app.features.leveling.rank_card import Font as RankCardFont, RankCard
 from app.util import AnsiColor, AnsiStringBuilder, UserView, converter
@@ -478,6 +478,9 @@ class Leveling(Cog):
         - `--my-card`: Whether to show the rank card as based off of your rank card instead of the user's.
         """
         user = user or ctx.author
+        if user.bot:
+            return 'Bots do not have levels.', BAD_ARGUMENT
+
         rank_card = await self.manager.fetch_rank_card(ctx.author if flags.my_card else user)
         record = self.manager.user_stats_for(user)
         await record.fetch()
