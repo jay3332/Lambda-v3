@@ -242,7 +242,7 @@ class LevelingRecord:
 
         stack = self.level_config.role_stack
         good_roles = [(k, v) for k, v in roles.items() if level >= v]
-        if not stack:
+        if not stack and good_roles:
             good_roles = max(good_roles, key=lambda r: r[1]),
 
         good_roles = {k for k, v in good_roles}
