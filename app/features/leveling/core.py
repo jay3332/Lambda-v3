@@ -241,8 +241,6 @@ class LevelingRecord:
             return
 
         stack = self.level_config.role_stack
-
-        self._bot.log.critical(repr(roles))
         good_roles = [(k, v) for k, v in roles.items() if level >= v]
         if not stack:
             good_roles = max(good_roles, key=lambda r: r[1]),
@@ -357,6 +355,7 @@ class LevelingManager:
             self.stats[guild.id][user_id] = LevelingRecord(
                 user=member,
                 bot=self.bot,
+                data=entry,
                 config=self.configs[guild.id],
             )
 
