@@ -136,8 +136,6 @@ class BaseRankCard:
 class RankCard(BaseRankCard):
     """Represents a rank card with rendering methods."""
 
-    CARD_ASPECT_RATIO: ClassVar[float] = 0.427536
-
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
@@ -163,19 +161,21 @@ class RankCard(BaseRankCard):
             return None
 
     @executor_function
-    def prepare_background(self, stream: BytesIO | None = None) -> Image.Image:
+    def prepare_background(self, stream: BytesIO | None = None, size: tuple[int, int] = (1390, 600)) -> Image.Image:
         base = Image.new('RGBA', (1390, 600), self.background_color)
+        width, height = size
+        aspect_ratio = height / width  # inversed
 
         if stream is None:
             return base
 
         with Image.open(stream).convert('RGBA') as im:
-            if im.height / im.width >= self.CARD_ASPECT_RATIO:
-                target = int(im.width * self.CARD_ASPECT_RATIO)
+            if im.height / im.width >= aspect_ratio:
+                target = int(im.width * aspect_ratio)
                 y_offset = int((im.height - target) / 2)
                 im = im.crop((0, y_offset, im.width, im.height - y_offset))
             else:
-                target = int(im.height * (1 / self.CARD_ASPECT_RATIO))
+                target = int(im.height * (1 / aspect_ratio))
                 x_offset = int((im.width - target) / 2)
                 im = im.crop((x_offset, 0, im.width - x_offset, im.height))
 
