@@ -96,7 +96,7 @@ class CustomCommandRecord(BaseRecord):
         *,
         connection: Connection | None = None,
     ) -> CustomCommandRecord:
-        query = """
+        query = """/**/
                 UPDATE
                     custom_commands
                 SET {}
@@ -216,7 +216,10 @@ class CustomCommandManager:
             raise ValueError('Custom commands cannot contain whitespace.')
 
         if command := self.bot.get_command(name):
-            if isinstance(command, CustomCommand) and name in self._records[guild.id]:
+            if isinstance(command, CustomCommand):
+                if name not in self._records[guild.id]:
+                    # this command is already registered as a custom command, but not for this guild.
+                    return name
                 raise ValueError('A custom command with this name already exists.')
 
             raise ValueError(f'A command with the name {name!r} already exists.')
