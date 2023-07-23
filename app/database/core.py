@@ -155,7 +155,7 @@ class Database(_Database):
                         guild_id = $1
                     """
 
-            return {record['user_id']: record for record in await connection.fetchrow(query, guild_id)}
+            return {record['user_id']: record for record in await connection.fetch(query, guild_id)}
 
     async def get_rank_card(self, user_id: int, *, connection: asyncpg.Connection | None = None) -> RankCard:
         async with connection or self.acquire() as connection:
