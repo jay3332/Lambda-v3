@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from difflib import SequenceMatcher
 from enum import Enum
 from io import BytesIO
@@ -400,10 +401,7 @@ class InteractiveLevelRolesView(discord.ui.View):
         await interaction.response.edit_message(content='Updating roles...', embed=embed, view=self)
 
         # Update everyone's roles
-        manager = self.ctx.cog.manager
-        await manager.ensure_cached_user_stats(self.ctx.guild)
-        for record in manager.walk_stats(self.ctx.guild):
-            await record.update_roles(record.level)
+        await self.ctx.cog.manager.update_all_roles(self.ctx.guild)
 
         embed.colour = Colors.success
         await interaction.edit_original_response(content='Saved and updated level roles.', embed=embed, view=self)
@@ -418,13 +416,10 @@ class InteractiveLevelRolesView(discord.ui.View):
         embed.colour = Colors.error
         await interaction.response.edit_message(content='Cancelled. Changes were discarded.', embed=embed, view=self)
 
+    # Save on timeout
     async def on_timeout(self) -> None:
         await self.config.update(level_roles=self._roles, role_stack=self._role_stack)
-        # Update everyone's roles
-        manager = self.ctx.cog.manager
-        await manager.ensure_cached_user_stats(self.ctx.guild)
-        for record in manager.walk_stats(self.ctx.guild):
-            await record.update_roles(record.level)
+        await self.ctx.cog.manager.update_all_roles(self.ctx.guild)
 
 
 class Leveling(Cog):

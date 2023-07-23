@@ -359,6 +359,10 @@ class LevelingManager:
                 config=self.configs[guild.id],
             )
 
+    async def update_all_roles(self, guild: discord.Guild) -> None:
+        await self.ensure_cached_user_stats(guild)
+        await asyncio.gather(*(record.update_roles(record.level) for record in self.walk_stats(guild)))
+
     def walk_stats(self, guild: HasId | int) -> Iterable[LevelingRecord]:
         if not isinstance(guild, int):
             guild = guild.id
