@@ -328,7 +328,7 @@ class RoleStackToggle(discord.ui.Button['InteractiveLevelRolesView']):
 
 class InteractiveLevelRolesView(discord.ui.View):
     def __init__(self, ctx: Context, *, config: LevelingConfig) -> None:
-        super().__init__(timeout=120)
+        super().__init__(timeout=300)  # Automatically save after 5 minutes
         self.ctx = ctx
         self.config = config
         self._roles = config.level_roles.copy()  # role_id => level
@@ -408,6 +408,23 @@ class InteractiveLevelRolesView(discord.ui.View):
         embed.colour = Colors.success
         await interaction.edit_original_response(content='Saved and updated level roles.', embed=embed, view=self)
         self.stop()
+
+    @discord.ui.button(label='Cancel', style=discord.ButtonStyle.danger, row=2)
+    async def cancel(self, interaction: TypedInteraction, _) -> None:
+        for child in self.children:
+            child.disabled = True
+
+        embed = self.make_embed()
+        embed.colour = Colors.error
+        await interaction.response.edit_message(content='Cancelled. Changes were discarded.', embed=embed, view=self)
+
+    async def on_timeout(self) -> None:
+        await self.config.update(level_roles=self._roles, role_stack=self._role_stack)
+        # Update everyone's roles
+        manager = self.ctx.cog.manager
+        await manager.ensure_cached_user_stats(self.ctx.guild)
+        for record in manager.walk_stats(self.ctx.guild):
+            await record.update_roles(record.level)
 
 
 class Leveling(Cog):
