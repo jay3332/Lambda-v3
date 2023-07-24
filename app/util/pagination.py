@@ -26,14 +26,16 @@ __all__ = (
 
 
 class _PaginatorButton(Button['PaginatorView']):
-    def __init__(self, paginator: Paginator, page: int, *, emoji: str, row: int | None = None) -> None:
+    def __init__(
+        self, paginator: Paginator, page: int, *, emoji: str, row: int | None = None, show_label: bool = False,
+    ) -> None:
         page += 1
         self.paginator: Paginator = paginator
         self.page: int = page
 
         current = paginator.current_page + 1
         disabled = page == current or not 1 <= page <= paginator.max_pages
-        label = str(page) if not disabled else None
+        label = str(page) if not disabled and show_label else None
 
         super().__init__(emoji=emoji, label=label, disabled=disabled, row=row)
 
@@ -121,7 +123,9 @@ class PaginatorView(UserView):
 
         if not self.dont_render_pagination_buttons:
             self.add_item(_PaginatorButton(self.paginator, 0, emoji=Emojis.Arrows.first, row=self._row))
-            self.add_item(_PaginatorButton(self.paginator, current - 1, emoji=Emojis.Arrows.previous, row=self._row))
+            self.add_item(
+                _PaginatorButton(self.paginator, current - 1, emoji=Emojis.Arrows.previous, row=self._row, show_label=True)
+            )
 
         if not self.dont_render_pagination_buttons and isinstance(self._center_button, _PageInputButton):
             label = f'Page {self.paginator.current_page + 1}/{self.paginator.max_pages}'
@@ -134,7 +138,9 @@ class PaginatorView(UserView):
 
         if not self.dont_render_pagination_buttons:
             self.add_item(_PaginatorButton(self.paginator, current + 1, emoji=Emojis.Arrows.forward, row=self._row))
-            self.add_item(_PaginatorButton(self.paginator, self.paginator.max_pages - 1, emoji=Emojis.Arrows.last, row=self._row))
+            self.add_item(
+                _PaginatorButton(self.paginator, self.paginator.max_pages - 1, emoji=Emojis.Arrows.last, row=self._row, show_label=True)
+            )
 
         if self._row == 0:
             for component in self._other_components:
