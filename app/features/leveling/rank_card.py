@@ -386,8 +386,9 @@ class RankCard(BaseRankCard):
         xp_font = get_font(size=22)
         level_offset, _ = level_text_font.getsize('LEVEL ')
 
-        for rank, (record, avatar_bytes) in enumerate(zip(records, avatars), start=offset):
-            top = (self.LB_SECTION_HEIGHT + self.LB_PADDING) * rank + self.LB_PADDING
+        for i, (record, avatar_bytes) in enumerate(zip(records, avatars)):
+            rank = str(i + offset + 1)
+            top = (self.LB_SECTION_HEIGHT + self.LB_PADDING) * i + self.LB_PADDING
 
             avatar_top = round(top + self.LB_OFFSET)
             with Image.open(BytesIO(avatar_bytes)) as avatar:
@@ -404,9 +405,9 @@ class RankCard(BaseRankCard):
             # Rank text
             draw.text(
                 (self.LB_INDENT // 2, top + self.LB_SECTION_HEIGHT // 2),
-                str(rank + 1),
+                rank,
                 fill=self.primary_color,
-                font=rank_fonts[len(str(rank + 1))],
+                font=rank_fonts[len(rank)],
                 anchor='mm',
             )
             # Username
