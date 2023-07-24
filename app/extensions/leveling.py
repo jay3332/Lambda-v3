@@ -601,7 +601,7 @@ class Leveling(Cog):
         )
         if flags.embed:
             paginator = Paginator(ctx, LeaderboardEmbedFormatter(records), page=flags.page - 1)
-            return message, paginator, REPLY
+            yield message, paginator, REPLY
         else:
             message += (
                 f'\n*Please give Lambda some time to render pages. If you are on a bad connection or '
@@ -610,7 +610,8 @@ class Leveling(Cog):
 
         rank_card = await self.manager.fetch_rank_card(ctx.author)
         paginator = Paginator(ctx, LeaderboardFormatter(rank_card, records), page=flags.page - 1)
-        return message, paginator, REPLY
+        async with ctx.typing():
+            yield message, paginator, REPLY
 
     @group('rank-card', aliases=('rc', 'card', 'rankcard', 'levelcard', 'level-card'), bot_permissions=('attach_files',))
     async def rank_card(self, ctx: Context) -> None:

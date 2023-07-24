@@ -39,7 +39,7 @@ class _PaginatorButton(Button['PaginatorView']):
 
         super().__init__(emoji=emoji, label=label, disabled=disabled, row=row)
 
-    async def callback(self, interaction: Interaction) -> None:
+    async def callback(self, interaction: TypedInteraction) -> None:
         self.paginator.current_page = self.page - 1
         await self.view._update(interaction)  # type: ignore
 
@@ -51,7 +51,7 @@ class _PageInputButton(Button['PaginatorView']):
         label = f'Page {paginator.current_page + 1}/{paginator.max_pages}'
         super().__init__(style=ButtonStyle.primary, label=label, row=row, disabled=self.paginator.max_pages <= 1)
 
-    async def callback(self, interaction: Interaction) -> None:
+    async def callback(self, interaction: TypedInteraction) -> None:
         await interaction.response.send_modal(_PageInputModal(self.view))
 
 
@@ -70,7 +70,7 @@ class _PageInputModal(Modal, title='Select Page'):
         self.paginator: Paginator = view.paginator
         self.page.placeholder %= f'{self.paginator.max_pages:,}'
 
-    async def on_submit(self, interaction: Interaction) -> None:
+    async def on_submit(self, interaction: TypedInteraction) -> None:
         try:
             page = int(self.page.value)
         except ValueError:
@@ -186,7 +186,14 @@ class Paginator:
             self, self.formatter.get_page(page),
         )
 
-    async def start(self, *, edit: bool = False, page: int = None, interaction: Interaction = None, **send_kwargs) -> None:
+    async def start(
+        self,
+        *,
+        edit: bool = False,
+        page: int = None,
+        interaction: Interaction | TypedInteraction = None,
+        **send_kwargs,
+    ) -> None:
         if page is not None:
             self.current_page = page
 
