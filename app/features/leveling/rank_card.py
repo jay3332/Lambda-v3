@@ -458,7 +458,7 @@ class RankCard(BaseRankCard):
         )
 
     async def update(self, **kwargs: Any) -> None:
-        if 'background_url' in kwargs:
+        if any(key.startswith('background') for key in kwargs):
             self.invalidate()
         await super().update(**kwargs)
 
