@@ -197,11 +197,14 @@ def wrap_exceptions(exc_type: Type[BaseException]) -> Callable[[Callable[P, R]],
     return decorator
 
 
-class ExecutorFunction(Protocol['P', 'R']):
-    __sync__: Callable[P, R]
+if TYPE_CHECKING:
+    class ExecutorFunction(Protocol[P, R]):
+        __sync__: Callable[P, R]
 
-    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> Awaitable[R]:
-        ...
+        def __call__(self, *args: P.args, **kwargs: P.kwargs) -> Awaitable[R]:
+            ...
+else:
+    ExecutorFunction: Type[Callable] = Callable
 
 
 def executor_function(func: Callable[P, R]) -> ExecutorFunction[P, R]:
