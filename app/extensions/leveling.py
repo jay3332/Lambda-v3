@@ -3,6 +3,7 @@ from __future__ import annotations
 from difflib import SequenceMatcher
 from enum import Enum
 from io import BytesIO
+from itertools import islice
 from textwrap import dedent
 from typing import Any, Callable, Coroutine, TypeVar, TYPE_CHECKING
 
@@ -11,11 +12,12 @@ from discord.ext import commands
 
 from app.core import Cog, Context, Flags, REPLY, command, cooldown, flag, group, store_true
 from app.core.helpers import BAD_ARGUMENT, guild_max_concurrency, user_max_concurrency
-from app.features.leveling.core import LevelingConfig, LevelingManager
+from app.features.leveling.core import LevelingConfig, LevelingManager, LevelingRecord
 from app.features.leveling.rank_card import Font as RankCardFont, RankCard
 from app.util import AnsiColor, AnsiStringBuilder, UserView, converter
 from app.util.common import progress_bar, sentinel
 from app.util.image import ImageFinder
+from app.util.pagination import Formatter, Paginator
 from app.util.types import CommandResponse, Snowflake, TypedInteraction
 from config import Colors, Emojis
 
@@ -426,6 +428,24 @@ class InteractiveLevelRolesView(discord.ui.View):
         await self.ctx.cog.manager.update_all_roles(self.ctx.guild)
 
 
+class LeaderboardFormatter(Formatter[LevelingRecord]):
+    def __init__(self, rank_card: RankCard, entries: list[LevelingRecord]) -> None:
+        self.rank_card = rank_card
+        super().__init__(entries=entries, per_page=RankCard.LB_COUNT)
+
+    async def format_page(self, paginator: Paginator, entry: list[LevelingRecord]) -> discord.File:
+        fp = await self.rank_card.render_leaderboard(
+            records=entry,
+            rank_offset=paginator.current_page * RankCard.LB_COUNT,
+        )
+        return discord.File(fp, f'leaderboard_{self.rank_card.user_id}')
+
+
+class LeaderboardFlags(Flags):
+    embed: bool = store_true(short='e')
+    page: int = flag(short='p', alias='jump', default=1)
+
+
 class Leveling(Cog):
     """Interact with Lambda's robust and feature-packed leveling system."""
 
@@ -533,6 +553,26 @@ class Leveling(Cog):
             result = await rank_card.render(user=user, rank=record.rank, level=record.level, xp=record.xp, max_xp=record.max_xp)
 
         return f'Rank card for **{user}**:', discord.File(result, filename=f'rank_card_{user.id}.png'), REPLY
+
+    @command(aliases=('lb', 'top'))
+    @cooldown(1, 10)
+    @user_max_concurrency(1)
+    @module_enabled()
+    async def leaderboard(self, ctx: Context, *, flags: LeaderboardFlags) -> CommandResponse:
+        """View the leaderboard of members with the highest levels in this server.
+
+        Flags:
+        - `--embed`: Whether to render the response as a simple embed.
+          This is useful if you don't want to wait rendering or if your connection is slow.
+        - `--page <page>`: The page of the leaderboard to jump to. Defaults to `1`.
+        """
+        await self.manager.ensure_cached_user_stats(ctx.guild)
+        non_zero = (record for record in self.manager.walk_stats(ctx.guild) if (record.level, record.xp) > (0, 0))
+        records = sorted(islice(non_zero, 100), key=lambda record: (record.level, record.xp), reverse=True)
+
+        rank_card = await self.manager.fetch_rank_card(ctx.author)
+        paginator = Paginator(ctx, LeaderboardFormatter(rank_card, records), page=flags.page)
+        return paginator, REPLY
 
     @group('rank-card', aliases=('rc', 'card', 'rankcard', 'levelcard', 'level-card'), bot_permissions=('attach_files',))
     async def rank_card(self, ctx: Context) -> None:

@@ -5,7 +5,7 @@ import re
 from datetime import timedelta
 from functools import wraps
 from inspect import iscoroutinefunction
-from typing import Any, Awaitable, Callable, Iterable, ParamSpec, TYPE_CHECKING, Type, TypeVar
+from typing import Any, Awaitable, Callable, Iterable, ParamSpec, Protocol, TYPE_CHECKING, Type, TypeVar
 
 from discord.ext.commands import Converter
 
@@ -197,13 +197,21 @@ def wrap_exceptions(exc_type: Type[BaseException]) -> Callable[[Callable[P, R]],
     return decorator
 
 
-def executor_function(func: Callable[P, R]) -> Callable[P, Awaitable[R]]:
+class ExecutorFunction(Protocol[P, R]):
+    __sync__: Callable[P, R]
+
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> Awaitable[R]:
+        ...
+
+
+def executor_function(func: Callable[P, R]) -> ExecutorFunction[P, R]:
     """Runs the decorated function in an executor"""
     @wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> Awaitable[R]:
         return asyncio.to_thread(func, *args, **kwargs)
 
-    return wrapper
+    wrapper.__sync__ = func
+    return wrapper  # type: ignore
 
 
 def preinstantiate(*args: Any, **kwargs: Any) -> Callable[[Type[T]], T]:

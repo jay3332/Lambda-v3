@@ -5,9 +5,9 @@ import functools
 from collections import OrderedDict
 from enum import Enum
 from io import BytesIO
-from typing import Any, Final, TYPE_CHECKING, Type, overload
+from typing import Any, ClassVar, Final, TYPE_CHECKING, Type, overload
 
-from PIL import Image, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter
 from aiohttp import ClientTimeout
 from pilmoji import Pilmoji
 from pilmoji.source import MicrosoftEmojiSource
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from discord import Member, User
 
     from app.core import Bot
+    from app.features.leveling.core import LevelingRecord
     from app.util.types import RankCard as RankCardPayload, RGBColor, RGBAColor
 
 __all__ = (
@@ -136,10 +137,23 @@ class BaseRankCard:
 class RankCard(BaseRankCard):
     """Represents a rank card with rendering methods."""
 
+    LB_COUNT: Final[ClassVar[int]] = 5
+    LB_PADDING: Final[ClassVar[int]] = 12
+    LB_WIDTH: Final[ClassVar[int]] = 520
+    LB_SECTION_HEIGHT: Final[ClassVar[int]] = 96
+    LB_STRIDE: Final[ClassVar[int]] = LB_SECTION_HEIGHT + LB_PADDING
+    LB_HEIGHT: Final[ClassVar[int]] = LB_PADDING + LB_STRIDE * LB_COUNT
+    LB_INDENT: Final[ClassVar[int]] = 64
+    LB_AVATAR_SIZE: Final[ClassVar[int]] = int(LB_SECTION_HEIGHT * 0.7)
+    LB_OFFSET: Final[ClassVar[float]] = (LB_SECTION_HEIGHT - LB_AVATAR_SIZE) / 2
+    LB_TEXT_LEFT_PADDING: Final[ClassVar[int]] = 18
+    LB_TEXT_OFFSET = LB_TEXT_LEFT_PADDING + LB_AVATAR_SIZE + LB_INDENT + round(LB_OFFSET)
+
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
 
         self._prepared_background: Image.Image | None = None
+        self._prepared_leaderboard_background: Image.Image | None = None
 
     async def _fetch_background_bytes(self) -> BytesIO | None:
         if not self.background_url:
@@ -335,6 +349,111 @@ class RankCard(BaseRankCard):
             max_xp=max_xp,
         )
 
+    @executor_function
+    def prepare_leaderboard_background(self, stream: BytesIO | None = None) -> Image.Image:
+        image = self.prepare_background.__sync__(stream, size=(self.LB_WIDTH, self.LB_HEIGHT))
+
+        for y in range(self.LB_COUNT):
+            y = self.LB_PADDING + y * self.LB_STRIDE
+            with Image.new(
+                'RGBA',
+                (self.LB_WIDTH - self.LB_PADDING - self.LB_INDENT, self.LB_SECTION_HEIGHT),
+                self.overlay_color,
+            ) as overlay:
+                border_radius = self.overlay_border_radius
+                border_radius = border_radius and border_radius // 2
+                with rounded_mask(overlay.size, border_radius) as mask:
+                    image = alpha_paste(image, overlay, (self.LB_INDENT, y), mask)
+
+        return image
+
+    @executor_function
+    def _render_leaderboard(
+        self,
+        background: Image.Image,
+        *,
+        records: list[LevelingRecord],
+        avatars: list[bytes],
+        offset: int,
+    ) -> BytesIO:
+        avatar_downscale = self.LB_AVATAR_SIZE / 278
+        # Store all fonts
+        get_font = functools.partial(self._bot.fonts.get, './assets/fonts/' + FONT_MAPPING[self.font.value])
+        username_font = get_font(size=28)
+        rank_fonts = None, get_font(size=42), get_font(size=40), get_font(size=38)
+        level_text_font, level_font = get_font(size=24), get_font(size=30)
+        xp_font = get_font(size=22)
+        level_offset, _ = level_text_font.getsize('LEVEL ')
+
+        for rank, (record, avatar_bytes) in enumerate(zip(records, avatars), start=offset):
+            top = (self.LB_SECTION_HEIGHT + self.LB_PADDING) * rank + self.LB_PADDING
+
+            avatar_top = round(top + self.LB_OFFSET)
+            with Image.open(BytesIO(avatar_bytes)) as avatar:
+                avatar = avatar.convert('RGBA').resize((self.LB_AVATAR_SIZE, self.LB_AVATAR_SIZE))
+                with rounded_mask(avatar.size, int(self.avatar_border_radius * avatar_downscale)) as mask:
+                    background = alpha_paste(
+                        background,
+                        avatar,
+                        (round(self.LB_OFFSET) + self.LB_INDENT, avatar_top),
+                        mask,
+                    )
+
+            draw = ImageDraw.Draw(background)
+            # Rank text
+            draw.text(
+                (self.LB_INDENT // 2, top + self.LB_SECTION_HEIGHT // 2),
+                str(rank + 1),
+                fill=self.primary_color,
+                font=rank_fonts[len(str(rank + 1))],
+            )
+            # Username
+            draw.text(
+                (self.LB_TEXT_OFFSET, avatar_top),
+                str(record.user),
+                fill=(*self.primary_color, 235),
+                font=username_font,
+            )
+            # "LEVEL"
+            draw.text((self.LB_TEXT_OFFSET, avatar_top + 42), 'LEVEL', fill=self.secondary_color, font=level_text_font)
+            base_offset = self.LB_TEXT_OFFSET + level_offset
+            # Level number
+            draw.text((base_offset, avatar_top + 36), str(record.level), fill=self.primary_color, font=level_font)
+            base_offset += level_font.getsize(str(record.level) + '  ')[0]
+            # XP
+            draw.text(
+                (base_offset, avatar_top + 44),
+                f'{record.xp:,} XP',
+                fill=(*self.secondary_color, 225),
+                font=xp_font,
+            )
+
+        # If there are less than LB_COUNT records, crop the image
+        if len(records) < self.LB_COUNT:
+            lacking = self.LB_COUNT - len(records)
+            background = background.crop((0, 0, self.LB_WIDTH, self.LB_HEIGHT - self.LB_STRIDE * lacking))
+
+        with background:
+            buffer = BytesIO()
+            background.save(buffer, 'png')
+            buffer.seek(0)
+            return buffer
+
+    async def render_leaderboard(self, *, records: list[LevelingRecord], rank_offset: int) -> BytesIO:
+        if self._prepared_leaderboard_background is None:
+            background_bytes = await self.fetch_background_bytes()
+            self._prepared_leaderboard_background = await self.prepare_leaderboard_background(background_bytes)
+
+        avatars = await asyncio.gather(
+            *(record.user.avatar.with_format('png').with_size(512).read() for record in records)
+        )
+        return await self._render_leaderboard(
+            self._prepared_leaderboard_background.copy(),
+            records=records,
+            avatars=avatars,
+            offset=rank_offset,
+        )
+
     async def update(self, **kwargs: Any) -> None:
         if 'background_url' in kwargs:
             self.invalidate()
@@ -342,3 +461,4 @@ class RankCard(BaseRankCard):
 
     def invalidate(self) -> None:
         self._prepared_background = None
+        self._prepared_leaderboard_background = None

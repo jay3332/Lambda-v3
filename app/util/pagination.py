@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from typing import Collection, Generic, TYPE_CHECKING, TypeVar
 
-from discord import ButtonStyle, Embed, Interaction
+from discord import ButtonStyle, Embed, File, Interaction
 from discord.ui import Button, Modal, TextInput
 
 from app.util.views import UserView
@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from discord.ui import Item
 
     from app.core.models import Context
+    from app.util.types import TypedInteraction
 
 T = TypeVar('T')
 V = TypeVar('V')
@@ -139,10 +140,13 @@ class PaginatorView(UserView):
             for component in self._other_components:
                 self.add_item(component)
 
-    async def _update(self, interaction: Interaction) -> None:
+    async def _update(self, interaction: TypedInteraction) -> None:
         self._update_view()
-        embed = await self.paginator.get_page(self.paginator.current_page)
-        await interaction.response.edit_message(embed=embed, view=self)
+        entity = await self.paginator.get_page(self.paginator.current_page)
+        if isinstance(entity, Embed):
+            await interaction.response.edit_message(embed=entity, view=self)
+        elif isinstance(entity, File):
+            await interaction.response.edit_message(attachments=[entity], view=self)
 
 
 class Paginator:
@@ -171,7 +175,7 @@ class Paginator:
     def max_pages(self) -> int:
         return self.formatter.max_pages
 
-    async def get_page(self, page: int, /) -> Embed:
+    async def get_page(self, page: int, /) -> Embed | File:
         return await self.formatter.format_page(
             self, self.formatter.get_page(page),
         )
@@ -181,7 +185,11 @@ class Paginator:
             self.current_page = page
 
         send_kwargs.pop('embeds', None)
-        send_kwargs['embed'] = await self.get_page(self.current_page)
+        entity = await self.get_page(self.current_page)
+        if isinstance(entity, Embed):
+            send_kwargs['embed'] = entity
+        elif isinstance(entity, File):
+            send_kwargs['file'] = entity
 
         if edit:
             responder = self.ctx.maybe_edit if interaction is None else interaction.response.edit_message
@@ -226,7 +234,7 @@ class Formatter(ABC, Generic[T]):
         return max(1, pages + bool(extra))
 
     @abstractmethod
-    async def format_page(self, paginator: Paginator, entry: T | list[T]) -> Embed:
+    async def format_page(self, paginator: Paginator, entry: T | list[T]) -> Embed | File:
         raise NotImplementedError
 
 
@@ -237,7 +245,7 @@ class LineBasedFormatter(Formatter[str]):
 
         super().__init__(lines, per_page=per_page)
 
-    async def format_page(self, paginator: Paginator, lines: list[str]) -> Embed:
+    async def format_page(self, paginator: Paginator, lines: list[str]) -> Embed | File:
         embed = self.embed.copy()
 
         if self.field_name is None:
@@ -262,7 +270,7 @@ class FieldBasedFormatter(Formatter[dict[str, V]]):
 
         super().__init__(field_kwargs, per_page=per_page)
 
-    async def format_page(self, paginator: Paginator, fields: list[dict[str, V]]) -> Embed:
+    async def format_page(self, paginator: Paginator, fields: list[dict[str, V]]) -> Embed | File:
         embed = Embed.from_dict(deepcopy(self.embed.to_dict()))
         for field in fields:
             embed.add_field(**field)
