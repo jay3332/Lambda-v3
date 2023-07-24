@@ -8,6 +8,7 @@ from textwrap import dedent
 from typing import Any, Callable, Coroutine, TypeVar, TYPE_CHECKING
 
 import discord
+from discord.app_commands import describe
 from discord.ext import commands
 
 from app.core import Cog, Context, Flags, REPLY, command, cooldown, flag, group, store_true
@@ -490,7 +491,7 @@ class Leveling(Cog):
         await record.fetch_if_necessary()
         await record.execute(message)
 
-    @group('level-config', aliases=('lc', 'level-configuration', 'level-configs', 'leveling-config'))
+    @group('level-config', aliases=('lc', 'level-configuration', 'level-configs', 'leveling-config'), hybrid=True)
     async def level_config(self, _ctx: Context) -> CommandResponse:
         """Commands for configuring the leveling module."""
         return 'WIP', REPLY
@@ -499,7 +500,8 @@ class Leveling(Cog):
     def _enabled_text(toggle: bool) -> str:
         return f'{Emojis.enabled} Enabled' if toggle else f'{Emojis.disabled} Disabled'
 
-    @level_config.command('module', aliases=('m', 'mod', 'toggle', 'status'), user_permissions=('manage_guild',))
+    @level_config.command('module', aliases=('m', 'mod', 'toggle', 'status'), user_permissions=('manage_guild',), hybrid=True)
+    @describe(toggle='Whether to enable or disable the module.')
     @guild_max_concurrency(1)
     async def level_config_module(self, ctx: Context, toggle: bool = None) -> CommandResponse:
         """Toggles the leveling module on or off."""
@@ -513,7 +515,7 @@ class Leveling(Cog):
 
         return f'Leveling module now set to **{self._enabled_text(toggle)}**.', REPLY
 
-    @level_config.command('roles', aliases=('role', 'r', 'reward', 'rewards'), user_permissions=('manage_guild',))
+    @level_config.command('roles', aliases=('role', 'r', 'reward', 'rewards'), user_permissions=('manage_guild',), hybrid=True)
     @guild_max_concurrency(1)
     @module_enabled()
     async def level_config_roles(self, ctx: Context) -> CommandResponse:
@@ -532,6 +534,7 @@ class Leveling(Cog):
         await view.wait()
 
     @command(aliases=('r', 'level', 'lvl', 'lv', 'xp', 'exp'), bot_permissions=('attach_files',))
+    @describe(user='The user to view the level of. Defaults to yourself.', flags='Flags to modify the command.')
     @cooldown(1, 5)
     @user_max_concurrency(1)
     @module_enabled()
@@ -574,7 +577,8 @@ class Leveling(Cog):
 
         return f'Rank card for **{user}**:', discord.File(result, filename=f'rank_card_{user.id}.png'), REPLY
 
-    @command(aliases=('lb', 'top'))
+    @command(aliases=('lb', 'top'), hybrid=True)
+    @describe(flags='Flags to modify the command.')
     @cooldown(1, 10)
     @user_max_concurrency(1)
     @module_enabled()
@@ -609,7 +613,13 @@ class Leveling(Cog):
         paginator = Paginator(ctx, LeaderboardFormatter(rank_card, records), page=flags.page - 1)
         return message, paginator, REPLY
 
-    @group('rank-card', aliases=('rc', 'card', 'rankcard', 'levelcard', 'level-card'), bot_permissions=('attach_files',))
+    @group(
+        'rank-card',
+        aliases=('rc', 'card', 'rankcard', 'levelcard', 'level-card'),
+        bot_permissions=('attach_files',),
+        hybrid=True,
+        fallback='help',
+    )
     async def rank_card(self, ctx: Context) -> None:
         """Commands for modifying your rank card."""
         await ctx.send_help(ctx.command)
