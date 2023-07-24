@@ -441,6 +441,25 @@ class LeaderboardFormatter(Formatter[LevelingRecord]):
         return discord.File(fp, f'leaderboard_{self.rank_card.user_id}.png')
 
 
+class LeaderboardEmbedFormatter(Formatter[LevelingRecord]):
+    def __init__(self, entries: list[LevelingRecord]) -> None:
+        super().__init__(entries=entries, per_page=10)
+
+    async def format_page(self, paginator: Paginator, entry: list[LevelingRecord]) -> discord.Embed:
+        embed = discord.Embed(color=Colors.primary, timestamp=paginator.ctx.now)
+        embed.set_author(name=f'Top Members in {paginator.ctx.guild}', icon_url=paginator.ctx.guild.icon.url)
+
+        description = []
+        for i, record in enumerate(entry, start=paginator.current_page * self.per_page):
+            ratio = record.xp / record.max_xp
+            description.append(
+                f'{i + 1}. {record.user.mention}: Level **{record.level:,}** '
+                f'*({record.xp:,}/{record.max_xp:,} XP) [{ratio:.1%}]*'
+            )
+
+        return embed
+
+
 class LeaderboardFlags(Flags):
     embed: bool = store_true(short='e')
     page: int = flag(short='p', alias='jump', default=1)
@@ -569,10 +588,25 @@ class Leveling(Cog):
         await self.manager.ensure_cached_user_stats(ctx.guild)
         non_zero = (record for record in self.manager.walk_stats(ctx.guild) if (record.level, record.xp) > (0, 0))
         records = sorted(islice(non_zero, 100), key=lambda record: (record.level, record.xp), reverse=True)
+        record = self.manager.user_stats_for(ctx.author)
+        await record.fetch()
+
+        message = (
+            f'Here is the XP Leaderboard for **{ctx.guild}** '
+            f'(you are rank **#{record.rank:,}** out of {ctx.guild.member_count:,} members.)'
+        )
+        if flags.embed:
+            paginator = Paginator(ctx, LeaderboardEmbedFormatter(records), page=flags.page - 1)
+            return message, paginator, REPLY
+        else:
+            message += (
+                f'\n*Please give Lambda some time to render pages. If you are on a bad connection or '
+                f'do not want to wait for pages to render, use `{ctx.clean_prefix}leaderboard --embed` instead.*'
+            )
 
         rank_card = await self.manager.fetch_rank_card(ctx.author)
         paginator = Paginator(ctx, LeaderboardFormatter(rank_card, records), page=flags.page - 1)
-        return paginator, REPLY
+        return message, paginator, REPLY
 
     @group('rank-card', aliases=('rc', 'card', 'rankcard', 'levelcard', 'level-card'), bot_permissions=('attach_files',))
     async def rank_card(self, ctx: Context) -> None:
