@@ -174,8 +174,7 @@ class RankCard(BaseRankCard):
         except asyncio.TimeoutError:
             return None
 
-    @executor_function
-    def prepare_background(self, stream: BytesIO | None = None, size: tuple[int, int] = (1390, 600)) -> Image.Image:
+    def _prepare_background(self, stream: BytesIO | None = None, size: tuple[int, int] = (1390, 600)) -> Image.Image:
         base = Image.new('RGBA', size, self.background_color)
         width, height = size
         aspect_ratio = height / width  # inversed
@@ -204,6 +203,8 @@ class RankCard(BaseRankCard):
             base = alpha_paste(base, im, (0, 0), im)
 
         return base
+
+    prepare_background = executor_function(_prepare_background)
 
     @executor_function
     def _render(
@@ -351,7 +352,7 @@ class RankCard(BaseRankCard):
 
     @executor_function
     def prepare_leaderboard_background(self, stream: BytesIO | None = None) -> Image.Image:
-        image = self.prepare_background.__sync__(stream, size=(self.LB_WIDTH, self.LB_HEIGHT))
+        image = self._prepare_background(stream, size=(self.LB_WIDTH, self.LB_HEIGHT))
 
         for y in range(self.LB_COUNT):
             y = self.LB_PADDING + y * self.LB_STRIDE

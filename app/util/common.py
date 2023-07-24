@@ -197,23 +197,12 @@ def wrap_exceptions(exc_type: Type[BaseException]) -> Callable[[Callable[P, R]],
     return decorator
 
 
-if TYPE_CHECKING:
-    class ExecutorFunction(Protocol[P, R]):
-        __sync__: Callable[P, R]
-
-        def __call__(self, *args: P.args, **kwargs: P.kwargs) -> Awaitable[R]:
-            ...
-else:
-    ExecutorFunction: Type[Callable] = Callable
-
-
-def executor_function(func: Callable[P, R]) -> ExecutorFunction[P, R]:
+def executor_function(func: Callable[P, R]) -> Callable[P, Awaitable[R]]:
     """Runs the decorated function in an executor"""
     @wraps(func)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> Awaitable[R]:
         return asyncio.to_thread(func, *args, **kwargs)
 
-    wrapper.__sync__ = func
     return wrapper  # type: ignore
 
 
