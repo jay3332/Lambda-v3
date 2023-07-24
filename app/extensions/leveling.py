@@ -457,6 +457,7 @@ class LeaderboardEmbedFormatter(Formatter[LevelingRecord]):
                 f'*({record.xp:,}/{record.max_xp:,} XP) [{ratio:.1%}]*'
             )
 
+        embed.description = '\n'.join(description)
         return embed
 
 
