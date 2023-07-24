@@ -407,6 +407,7 @@ class RankCard(BaseRankCard):
                 str(rank + 1),
                 fill=self.primary_color,
                 font=rank_fonts[len(str(rank + 1))],
+                anchor='mm',
             )
             # Username
             draw.text(
