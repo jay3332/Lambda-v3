@@ -578,7 +578,6 @@ class Leveling(Cog):
         return f'Rank card for **{user}**:', discord.File(result, filename=f'rank_card_{user.id}.png'), REPLY
 
     @command(aliases=('lb', 'top'), hybrid=True)
-    @describe(flags='Flags to modify the command.')
     @cooldown(1, 10)
     @user_max_concurrency(1)
     @module_enabled()
@@ -613,13 +612,7 @@ class Leveling(Cog):
         paginator = Paginator(ctx, LeaderboardFormatter(rank_card, records), page=flags.page - 1)
         return message, paginator, REPLY
 
-    @group(
-        'rank-card',
-        aliases=('rc', 'card', 'rankcard', 'levelcard', 'level-card'),
-        bot_permissions=('attach_files',),
-        hybrid=True,
-        fallback='help',
-    )
+    @group('rank-card', aliases=('rc', 'card', 'rankcard', 'levelcard', 'level-card'), bot_permissions=('attach_files',))
     async def rank_card(self, ctx: Context) -> None:
         """Commands for modifying your rank card."""
         await ctx.send_help(ctx.command)
