@@ -438,7 +438,7 @@ class LeaderboardFormatter(Formatter[LevelingRecord]):
             records=entry,
             rank_offset=paginator.current_page * RankCard.LB_COUNT,
         )
-        return discord.File(fp, f'leaderboard_{self.rank_card.user_id}')
+        return discord.File(fp, f'leaderboard_{self.rank_card.user_id}.png')
 
 
 class LeaderboardFlags(Flags):
@@ -571,7 +571,7 @@ class Leveling(Cog):
         records = sorted(islice(non_zero, 100), key=lambda record: (record.level, record.xp), reverse=True)
 
         rank_card = await self.manager.fetch_rank_card(ctx.author)
-        paginator = Paginator(ctx, LeaderboardFormatter(rank_card, records), page=flags.page)
+        paginator = Paginator(ctx, LeaderboardFormatter(rank_card, records), page=flags.page - 1)
         return paginator, REPLY
 
     @group('rank-card', aliases=('rc', 'card', 'rankcard', 'levelcard', 'level-card'), bot_permissions=('attach_files',))
