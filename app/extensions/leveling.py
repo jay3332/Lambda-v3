@@ -602,6 +602,7 @@ class Leveling(Cog):
         if flags.embed:
             paginator = Paginator(ctx, LeaderboardEmbedFormatter(records), page=flags.page - 1)
             yield message, paginator, REPLY
+            return
         else:
             message += (
                 f'\n*Please give Lambda some time to render pages. If you are on a bad connection or '
