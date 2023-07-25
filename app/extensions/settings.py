@@ -11,7 +11,7 @@ from config import Colors
 class Settings(Cog):
     """Configuration settings for the bot."""
 
-    emoji = '\U00002699'
+    emoji = '\u2699\ufe0f'
     MENTION_REGEX: re.Pattern[str] = re.compile(r'<@!?\d+>')
 
     @group(aliases=('pf', 'prefixes', 'pref'))

@@ -30,6 +30,8 @@ class SlowmodeFlags(Flags):
 class Management(Cog):
     """Commands that aid in managing your server and channels."""
 
+    emoji = '\U0001f528'
+
     async def cog_check(self, ctx: Context) -> bool:
         return ctx.guild is not None
 
