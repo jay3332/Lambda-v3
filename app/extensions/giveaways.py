@@ -1,26 +1,20 @@
 from __future__ import annotations
 
-import json
 import random
-from datetime import datetime, timedelta
-from typing import Any, ClassVar, Final, NamedTuple, Self, TYPE_CHECKING, Type
+from typing import Any,NamedTuple, TYPE_CHECKING
 
 import discord
-from dateparser.search import search_dates
-from discord.ext import commands
-from discord.http import handle_message_parameters
 from discord.utils import format_dt
 
-from app.core import BAD_ARGUMENT, Bot, Cog, Context, ERROR, Flags, Param, REPLY, Timer, command, flag, group, \
-    store_true
-from app.util.common import converter, cutoff, humanize_duration, pluralize
+from app.core import Bot, Cog, Context, ERROR, Flags, REPLY, Timer, flag, group
+from app.util.common import cutoff, pluralize
 from app.util.converters import IntervalConverter
-from app.util.pagination import FieldBasedFormatter, Paginator
-from app.util.timezone import TimeZone
 from app.util.types import CommandResponse
 from config import Colors
 
 if TYPE_CHECKING:
+    from typing import Self
+
     from asyncpg import Record
 
     from app.util.types import TypedInteraction
