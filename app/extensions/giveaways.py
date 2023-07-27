@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from typing import Any,NamedTuple, TYPE_CHECKING
+from typing import Any, NamedTuple, TYPE_CHECKING
 
 import discord
 from discord.utils import format_dt
