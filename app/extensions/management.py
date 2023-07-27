@@ -80,7 +80,8 @@ class Management(Cog):
         )
         ctx.bot.loop.create_task(ctx.thumbs())
 
-        message = f'Slowmode interval of {channel.mention} set to **{humanize_duration(interval)}**.'
+        humanized = humanize_duration(interval) if interval else 'off'
+        message = f'Slowmode interval of {channel.mention} set to **{humanized}**.'
 
         if reset_after := flags.reset_after:
             await ctx.bot.timers.create(when=reset_after, event='reset_slowmode', channel_id=channel.id)

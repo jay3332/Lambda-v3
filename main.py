@@ -24,7 +24,7 @@ if __name__ == '__main__':
             uvloop.install()
 
     match argv:
-        case [_, 'migrate' | 'm' | 'migration' | 'migrations', *args]:
+        case [_, 'migrate' | 'mig' | 'm' | 'migration' | 'migrations', *args]:
             match args:
                 case ['add' | 'new' | 'create' | '+', name]:
                     Migrator.create_migration(name)

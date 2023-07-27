@@ -429,6 +429,48 @@ class InteractiveLevelRolesView(discord.ui.View):
         await self.ctx.cog.manager.update_all_roles(self.ctx.guild)
 
 
+class InteractiveMultiplierView(discord.ui.View):
+    def __init__(self, ctx: Context, *, config: LevelingConfig) -> None:
+        super().__init__(timeout=300)  # Automatically save after 5 minutes
+        self.ctx = ctx
+        self.config = config
+        self._roles = config.level_roles.copy()  # role_id => level
+        self._role_stack = config.role_stack
+
+        self.remove_select = RemoveLevelRolesSelect(self._roles, ctx)
+        self.add_item(self.remove_select)
+        self.add_item(RoleStackToggle(self._role_stack))
+
+    def make_embed(self) -> discord.Embed:
+        embed = discord.Embed(color=Colors.primary, timestamp=self.ctx.now)
+        embed.set_author(name=f'{self.ctx.guild} Level Role Rewards', icon_url=self.ctx.guild.icon.url)
+        embed.set_footer(text='Make sure to save your changes by pressing the Save button!')
+
+        indicator = 'Users can accumulate multiple level roles.' if self._role_stack else 'Users can only have the highest level role.'
+        embed.add_field(name='Role Stack', value=f'{Emojis.enabled if self._role_stack else Emojis.disabled} {indicator}')
+
+        if not self._roles:
+            embed.description = 'You have not configured any level role rewards yet.'
+            return embed
+
+        embed.insert_field_at(
+            index=0,
+            name=f'Level Roles ({len(self._roles)}/25 slots)',
+            value='\n'.join(
+                f'- Level {level:,}: <@&{role_id}>'
+                for role_id, level in sorted(self._roles.items(), key=lambda pair: pair[1])
+            ),
+            inline=False
+        )
+        return embed
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return interaction.user.guild_permissions.manage_guild
+
+    async def on_timeout(self) -> None:
+        await self.config.update()
+
+
 class LeaderboardFormatter(Formatter[LevelingRecord]):
     def __init__(self, rank_card: RankCard, entries: list[LevelingRecord]) -> None:
         self.rank_card = rank_card

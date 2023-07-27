@@ -47,6 +47,9 @@ class _Database:
     def acquire(self, *, timeout: float = None) -> asyncpg.pool.PoolAcquireContext:
         return self._internal_pool.acquire(timeout=timeout)
 
+    def release(self, conn: asyncpg.Connection, *, timeout: float = None) -> Awaitable[None]:
+        return self._internal_pool.release(conn, timeout=timeout)
+
     def execute(self, query: str, *args: Any, timeout: float = None) -> Awaitable[str]:
         return self._internal_pool.execute(query, *args, timeout=timeout)
 
@@ -88,10 +91,8 @@ class Database(_Database):
 
         if fetch:
             return record.fetch()
-
         elif fetch is None:
             return record.fetch_if_necessary()
-
         return record
 
     def get_all_leveling_configurations(self, *, connection: asyncpg.Connection | None = None) -> Awaitable[list[LevelingConfig]]:
@@ -277,3 +278,8 @@ class GuildRecord(BaseRecord):
     def prefixes(self) -> list[str]:
         """Returns the guild's prefixes."""
         return self.data['prefixes']
+
+    @property
+    def giveaway_role_id(self) -> int | None:
+        """Returns the guild's giveaway role ID, if any."""
+        return self.data['giveaway_role_id']

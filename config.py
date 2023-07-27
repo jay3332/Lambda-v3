@@ -59,7 +59,7 @@ class VersionInfo(NamedTuple):
 
 # Below this comment are defined the configuration variables for this application.
 
-beta: bool = system() == 'Windows'  # can be changed to liking
+beta: bool = system() != 'Linux'  # can be changed to liking
 
 name: str = 'Lambda'
 version: VersionInfo = VersionInfo(major=3, minor=0, micro=0, releaselevel='alpha', serial=0)
@@ -92,7 +92,7 @@ lavalink_nodes: Collection[tuple[str, int, str | None, bool]] = [
 class DatabaseConfig:
     """Database configuration variables."""
     database: str = 'lambda_v3'
-    user: str = 'postgres'
+    user: str | None = None if beta else 'postgres'
 
     host: str | None = '127.0.0.1' if beta else 'localhost'
     port: int | None = None
