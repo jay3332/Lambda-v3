@@ -267,15 +267,15 @@ class Giveaways(Cog):
         async with ctx.db.acquire() as conn:
             query = """
                     INSERT INTO giveaways (
-                        guild_id, channel_id, message_id, timer_id, level_requirement, roles_requirement, prize
+                        guild_id, channel_id, message_id, timer_id, level_requirement, roles_requirement, prize, winners
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                     RETURNING *
                     """
             record = await conn.fetchrow(
                 query,
                 ctx.guild.id, ctx.channel.id, ctx.message.id, -1,
-                flags.level, list(set(flags.roles or [])), prize,
+                flags.level, list(set(flags.roles or [])), prize, flags.winners,
             )
             giveaway = GiveawayRecord.from_record(record)
             # timer_id and giveaway_id are cyclicly dependent
