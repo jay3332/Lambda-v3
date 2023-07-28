@@ -28,7 +28,6 @@ class CreateGiveawayFlags(Flags):
 
 
 class GiveawayRecord(NamedTuple):
-    id: int
     guild_id: int
     channel_id: int
     message_id: int
@@ -37,6 +36,10 @@ class GiveawayRecord(NamedTuple):
     roles_requirement: set[int]
     prize: str
     winners: int
+
+    @property
+    def id(self) -> int:
+        return self.timer_id
 
     @classmethod
     def from_record(cls, record: Record) -> Self:
@@ -96,8 +99,14 @@ class Giveaways(Cog):
     def __init__(self, bot: Bot) -> None:
         super().__init__(bot)
         self._giveaway_cache: dict[int, GiveawayRecord] = {}
+        self._giveaway_lookup: dict[(int, int), int] = {}
+
         self._load_task = self.bot.loop.create_task(self.fetch_current_giveaways())
         self._views: list[GiveawayView] = []
+
+    def register_giveaway(self, giveaway: GiveawayRecord) -> None:
+        self._giveaway_cache[giveaway.id] = giveaway
+        self._giveaway_lookup[giveaway.channel_id, giveaway.message_id] = giveaway.id
 
     async def cog_load(self) -> None:
         # register all persistent views
@@ -116,11 +125,14 @@ class Giveaways(Cog):
     async def fetch_current_giveaways(self) -> None:
         """Fetches all current running giveaways and stores them in the cache"""
         records = await self.bot.db.fetch('SELECT * FROM giveaways')
-        self._giveaway_cache = {record['id']: GiveawayRecord.from_record(record) for record in records}
+        self._giveaway_cache = {record['timer_id']: GiveawayRecord.from_record(record) for record in records}
+        self._giveaway_lookup = {
+            (record.channel_id, record.message_id): id for id, record in self._giveaway_cache.items(),
+        }
 
     async def end_giveaway(self, giveaway: GiveawayRecord) -> Any:
         conn = await self.bot.db.acquire()
-        await conn.execute('DELETE FROM giveaways WHERE id = $1', giveaway.id)
+        await conn.execute('DELETE FROM giveaways WHERE timer_id = $1', giveaway.id)
 
         partial = self.bot.get_partial_messageable(giveaway.channel_id)
         try:
@@ -156,6 +168,7 @@ class Giveaways(Cog):
             try:
                 await conn.execute('DELETE FROM giveaway_entrants WHERE giveaway_id = $1', giveaway.id)
                 del self._giveaway_cache[giveaway.id]
+                del self._giveaway_lookup[giveaway.channel_id, giveaway.message_id]
             except KeyError:
                 pass
             finally:
@@ -265,6 +278,7 @@ class Giveaways(Cog):
 
         # Register the giveaway into DB and cache
         async with ctx.db.acquire() as conn:
+            timer = await ctx.bot.timers.create(ends_at, 'giveaway_end')
             query = """
                     INSERT INTO giveaways (
                         guild_id, channel_id, message_id, timer_id, level_requirement, roles_requirement, prize, winners
@@ -274,16 +288,12 @@ class Giveaways(Cog):
                     """
             record = await conn.fetchrow(
                 query,
-                ctx.guild.id, ctx.channel.id, ctx.message.id, -1,
+                ctx.guild.id, ctx.channel.id, ctx.message.id, timer.id,
                 flags.level, list(set(flags.roles or [])), prize, flags.winners,
             )
-            giveaway = GiveawayRecord.from_record(record)
-            # timer_id and giveaway_id are cyclicly dependent
-            timer = await ctx.bot.timers.create(ends_at, 'giveaway_end', giveaway_id=giveaway.id)
-            await conn.execute('UPDATE giveaways SET timer_id = $1 WHERE id = $2', timer.id, giveaway.id)
-            giveaway.timer_id = timer.id
             # Add to cache
-            self._giveaway_cache[giveaway.id] = giveaway
+            giveaway = GiveawayRecord.from_record(record)
+            self.register_giveaway(giveaway)
 
         self._views.append(view := GiveawayView(ctx.bot, giveaway))
         await ctx.maybe_delete(ctx.message)
@@ -291,8 +301,7 @@ class Giveaways(Cog):
 
     @Cog.listener()
     async def on_timer_giveaway_end(self, timer: Timer) -> None:
-        giveaway_id = timer.metadata['giveaway_id']
-        giveaway = self._giveaway_cache.get(giveaway_id)  # FIXME: at scale, this needs to be a potential DB query
+        giveaway = self._giveaway_cache.get(timer.id)  # FIXME: at scale, this needs to be a potential DB query
         if not giveaway:
             return
 
@@ -304,13 +313,13 @@ class Giveaways(Cog):
         if not ctx.message.reference:
             return 'You must reply to the giveaway message to end it.', ERROR
 
-        giveaway = discord.utils.get(
-            self._giveaway_cache.values(),
-            channel_id=ctx.channel.id,
-            message_id=ctx.message.reference.message_id,
-        )
-        if not giveaway:
+        giveaway_id = self._giveaway_lookup.get((ctx.channel.id, ctx.message.reference.message_id))
+        if not giveaway_id or not (giveaway := self._giveaway_cache.get(giveaway_id)):
             return 'This message is not a giveaway, or it has already ended.', ERROR
+
+        # end the timer prematurely
+        timer = await ctx.bot.timers.get_timer(giveaway.timer_id)
+        await timer.end()
 
         await self.end_giveaway(giveaway)
         await ctx.thumbs()
