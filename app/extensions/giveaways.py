@@ -255,7 +255,7 @@ class Giveaways(Cog):
         - `--roles <role>...`: A space-separated list of roles that the giveaway is restricted to.
           Members without any of these roles will not be allowed to enter the giveaway. This is an "any" check,
           meaning that a member only needs to have at least one of the roles specified to enter.
-          Leave this flag out to allow everyone to enter.
+          Leave this flag out to allow everyone to enter. You may only have up to 10 roles.
 
         Examples:
         - `{PREFIX}giveaway start 1d Discord Nitro`
@@ -287,6 +287,9 @@ class Giveaways(Cog):
         if not 1 <= len(prize) <= 100:
             return 'The prize must be between 1 and 100 characters.', ERROR
 
+        if flags.roles and len(flags.roles) > 10:
+            return 'You may only have up to 10 roles.', ERROR
+
         if message := flags.message:
             if not 1 <= len(message) <= 1000:
                 return 'The message must be between 1 and 1000 characters.', ERROR
@@ -303,12 +306,14 @@ class Giveaways(Cog):
             embed.description += f'\n\U0001f4e3*{flags.message}*'
 
         embed.add_field(name='Hosted by', value=ctx.author.mention)
+        roles = list(set(flags.roles or []))
+
         if flags.level:
             embed.add_field(name='Level requirement', value=flags.level)
-        if flags.roles:
+        if roles:
             embed.add_field(
                 name='You must have one of these roles:',
-                value=cutoff('\n'.join(f'- {role.mention}' for role in flags.roles), 1024),
+                value=cutoff('\n'.join(f'- {role.mention}' for role in roles), 1024),
                 inline=False,
             )
 
@@ -326,7 +331,7 @@ class Giveaways(Cog):
             record = await conn.fetchrow(
                 query,
                 ctx.guild.id, ctx.channel.id, message.id, timer.id,
-                flags.level, list(set(role.id for role in flags.roles or [])), prize, flags.winners,
+                flags.level, [role.id for role in roles], prize, flags.winners,
             )
             # Add to cache
             giveaway = GiveawayRecord.from_record(record)
