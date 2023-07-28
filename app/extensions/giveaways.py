@@ -94,7 +94,7 @@ class GiveawayView(discord.ui.View):
                     return
 
         if req := self.giveaway.roles_requirement:
-            if any(interaction.user._roles.has(role_id) for role_id in req):
+            if all(not interaction.user._roles.has(role_id) for role_id in req):
                 nl = '\n'
                 await interaction.response.send_message(
                     f'You must have one of the following roles to enter this giveaway: '
