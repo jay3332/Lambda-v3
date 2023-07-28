@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS giveaways (
     guild_id BIGINT NOT NULL,
     channel_id BIGINT NOT NULL,
     message_id BIGINT NOT NULL,
-    timer_id BIGINT NOT NULL PRIMARY KEY REFERENCES timers(id) ON DELETE CASCADE,
+    timer_id BIGINT NOT NULL PRIMARY KEY,
     level_requirement INT NOT NULL,
     roles_requirement BIGINT[] NOT NULL,
     prize TEXT NOT NULL,
