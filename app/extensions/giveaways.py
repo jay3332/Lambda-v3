@@ -225,7 +225,7 @@ class Giveaways(Cog):
         - `role`: The role to set as the giveaway role.
         """
         record = await ctx.db.get_guild_record(ctx.guild.id)
-        await record.update(giveaways_role=role.id)
+        await record.update(giveaways_role_id=role.id)
         ctx.bot.loop.create_task(ctx.thumbs())
 
         return f'Giveaway role set to {role.mention}. Users with this role will be able to create giveaways.', REPLY
