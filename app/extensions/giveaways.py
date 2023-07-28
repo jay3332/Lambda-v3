@@ -303,7 +303,7 @@ class Giveaways(Cog):
         ends_at = ctx.now + duration
         embed.description = f'\u23f3 Giveaway ends {format_dt(ends_at, "R")}'
         if flags.message:
-            embed.description += f'\n\U0001f4e3*{flags.message}*'
+            embed.description += f'\n\U0001f4e3 *{flags.message}*'
 
         embed.add_field(name='Hosted by', value=ctx.author.mention)
         roles = list(set(flags.roles or []))
