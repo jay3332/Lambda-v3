@@ -326,7 +326,7 @@ class Giveaways(Cog):
             record = await conn.fetchrow(
                 query,
                 ctx.guild.id, ctx.channel.id, message.id, timer.id,
-                flags.level, list(set(flags.roles or [])), prize, flags.winners,
+                flags.level, list(set(role.id for role in flags.roles or [])), prize, flags.winners,
             )
             # Add to cache
             giveaway = GiveawayRecord.from_record(record)
