@@ -356,10 +356,10 @@ class Giveaways(Cog):
             return 'You must reply to the giveaway message to end it.', ERROR
 
         giveaway_id = self._giveaway_lookup.get((ctx.channel.id, ctx.message.reference.message_id))
-        if not giveaway_id or not (giveaway := self._giveaway_cache.get(giveaway_id)):
+        if not giveaway_id:
             return 'This message is not a giveaway, or it has already ended.', ERROR
 
         # end the timer prematurely
-        timer = await ctx.bot.timers.get_timer(giveaway.timer_id)
+        timer = await ctx.bot.timers.get_timer(giveaway_id)
         await timer.end()
         await ctx.thumbs()
