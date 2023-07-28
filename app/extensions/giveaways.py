@@ -312,7 +312,7 @@ class Giveaways(Cog):
                 inline=False,
             )
 
-        message = await ctx.reply('\U0001f389\U0001f389 **GIVEAWAY** \U0001f389\U0001f389', embed=embed)
+        message = await ctx.send('\U0001f389\U0001f389 **GIVEAWAY** \U0001f389\U0001f389', embed=embed)
         # Register the giveaway into DB and cache
         async with ctx.db.acquire() as conn:
             timer = await ctx.bot.timers.create(ends_at, 'giveaway_end')
