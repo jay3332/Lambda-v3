@@ -43,6 +43,7 @@ class GiveawayRecord(NamedTuple):
 
     @classmethod
     def from_record(cls, record: Record) -> Self:
+        record = dict(record)
         record['roles_requirement'] = set(record['roles_requirement'])
         return cls(**record)
 
