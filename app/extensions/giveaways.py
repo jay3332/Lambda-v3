@@ -127,7 +127,7 @@ class Giveaways(Cog):
         records = await self.bot.db.fetch('SELECT * FROM giveaways')
         self._giveaway_cache = {record['timer_id']: GiveawayRecord.from_record(record) for record in records}
         self._giveaway_lookup = {
-            (record.channel_id, record.message_id): id for id, record in self._giveaway_cache.items(),
+            (record.channel_id, record.message_id): id for id, record in self._giveaway_cache.items()
         }
 
     async def end_giveaway(self, giveaway: GiveawayRecord) -> Any:
