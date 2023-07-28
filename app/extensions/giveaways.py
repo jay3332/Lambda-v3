@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     from asyncpg import Record
 
+    from app.extensions.leveling import Leveling
     from app.util.types import TypedInteraction
 
 
@@ -79,6 +80,29 @@ class GiveawayView(discord.ui.View):
         label='Enter Giveaway', style=discord.ButtonStyle.primary, emoji='\U0001f389', custom_id='giveaway:enter',
     )
     async def enter_giveaway(self, interaction: TypedInteraction, _button: discord.ui.Button) -> None:
+        if req := self.giveaway.level_requirement:
+            if cog := self.bot.get_cog('Leveling'):
+                cog: Any
+                cog: Leveling
+                stats = cog.manager.user_stats_for(interaction.user)
+                await stats.fetch_if_necessary()
+                if stats.level < req:
+                    await interaction.response.send_message(
+                        f'You must be level **{req}** to enter this giveaway. (You are level {stats.level})',
+                        ephemeral=True,
+                    )
+                    return
+
+        if req := self.giveaway.roles_requirement:
+            if any(interaction.user._roles.has(role_id) for role_id in req):
+                nl = '\n'
+                await interaction.response.send_message(
+                    f'You must have one of the following roles to enter this giveaway: '
+                    f'{nl.join(f"- <@&{role_id}>" for role_id in req)}',
+                    ephemeral=True,
+                )
+                return
+
         prize = self.giveaway.prize
         view = LeaveGiveawayView(self)
 
