@@ -309,7 +309,7 @@ class Giveaways(Cog):
             self.register_giveaway(giveaway)
 
         self._views.append(view := GiveawayView(ctx.bot, giveaway))
-        await ctx.maybe_edit(message, view=view)
+        await ctx.maybe_edit(message, content=message.content, view=view)
         await ctx.maybe_delete(ctx.message)
 
     @Cog.listener()
