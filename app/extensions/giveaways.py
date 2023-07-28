@@ -362,6 +362,4 @@ class Giveaways(Cog):
         # end the timer prematurely
         timer = await ctx.bot.timers.get_timer(giveaway.timer_id)
         await timer.end()
-
-        await self.end_giveaway(giveaway)
         await ctx.thumbs()
