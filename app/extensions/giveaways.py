@@ -152,6 +152,7 @@ class Giveaways(Cog):
             await message.edit(
                 content='\U0001f389\U0001f389 **GIVEAWAY ENDED** \U0001f389\U0001f389',
                 embed=message.embeds[0],
+                view=None,
             )
         except discord.HTTPException:
             return
@@ -166,10 +167,11 @@ class Giveaways(Cog):
 
             winners = random.sample(entrants, min(giveaway.winners, len(entrants)))
             winner_ids = (winner['user_id'] for winner in winners)
-            winner_text = '\n'.join(f'<@{winner_id}>' for winner_id in winner_ids)
+            winner_text = '\n'.join(f'- <@{winner_id}>' for winner_id in winner_ids)
+            pluralized = 'Winners' if len(winners) > 1 else 'Winner'
 
             await message.reply(
-                f'## Winners of **{giveaway.prize}**:\n{winner_text}',
+                f'### {pluralized} of **{giveaway.prize}**: *(out of {len(entrants):,} entrants)*\n{winner_text}',
                 allowed_mentions=discord.AllowedMentions(users=True),
             )
         finally:
