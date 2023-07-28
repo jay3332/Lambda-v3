@@ -47,6 +47,9 @@ class GiveawayRecord(NamedTuple):
         record['roles_requirement'] = set(record['roles_requirement'])
         return cls(**record)
 
+    def __repr__(self) -> str:
+        return f'<GiveawayRecord id={self.id} prize={self.prize!r}>'
+
 
 class LeaveGiveawayView(discord.ui.View):
     def __init__(self, parent: GiveawayView) -> None:
@@ -306,7 +309,7 @@ class Giveaways(Cog):
         return '\U0001f389\U0001f389 **GIVEAWAY** \U0001f389\U0001f389', embed, view
 
     @Cog.listener()
-    async def on_timer_giveaway_end(self, timer: Timer) -> None:
+    async def on_giveaway_end_timer_complete(self, timer: Timer) -> None:
         giveaway = self._giveaway_cache.get(timer.id)  # FIXME: at scale, this needs to be a potential DB query
         if not giveaway:
             return
