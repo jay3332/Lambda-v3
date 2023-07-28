@@ -97,7 +97,7 @@ class GiveawayView(discord.ui.View):
             if all(not interaction.user._roles.has(role_id) for role_id in req):
                 nl = '\n'
                 await interaction.response.send_message(
-                    f'You must have one of the following roles to enter this giveaway: '
+                    f'You must have one of the following roles to enter this giveaway:\n'
                     f'{nl.join(f"- <@&{role_id}>" for role_id in req)}',
                     ephemeral=True,
                 )
