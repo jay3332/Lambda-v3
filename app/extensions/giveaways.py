@@ -122,6 +122,11 @@ class Giveaways(Cog):
             view.stop()
         self._load_task.cancel()
 
+        # delete all temporary giveaways
+        async with self.bot.db.acquire() as conn:
+            await conn.execute('DELETE FROM giveaways WHERE timer_id < 0')
+            await conn.execute('DELETE FROM giveaway_entrants WHERE giveaway_id < 0')
+
     # TODO: remove this with scale
     async def fetch_current_giveaways(self) -> None:
         """Fetches all current running giveaways and stores them in the cache"""
