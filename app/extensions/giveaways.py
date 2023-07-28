@@ -285,6 +285,7 @@ class Giveaways(Cog):
                 inline=False,
             )
 
+        message = await ctx.reply('\U0001f389\U0001f389 **GIVEAWAY** \U0001f389\U0001f389', embed=embed)
         # Register the giveaway into DB and cache
         async with ctx.db.acquire() as conn:
             timer = await ctx.bot.timers.create(ends_at, 'giveaway_end')
@@ -297,7 +298,7 @@ class Giveaways(Cog):
                     """
             record = await conn.fetchrow(
                 query,
-                ctx.guild.id, ctx.channel.id, ctx.message.id, timer.id,
+                ctx.guild.id, ctx.channel.id, message.id, timer.id,
                 flags.level, list(set(flags.roles or [])), prize, flags.winners,
             )
             # Add to cache
@@ -305,8 +306,8 @@ class Giveaways(Cog):
             self.register_giveaway(giveaway)
 
         self._views.append(view := GiveawayView(ctx.bot, giveaway))
+        await ctx.maybe_edit(message, view=view)
         await ctx.maybe_delete(ctx.message)
-        return '\U0001f389\U0001f389 **GIVEAWAY** \U0001f389\U0001f389', embed, view
 
     @Cog.listener()
     async def on_giveaway_end_timer_complete(self, timer: Timer) -> None:
