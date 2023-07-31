@@ -55,7 +55,7 @@ class CustomCommandCreateModal(discord.ui.Modal, title='Create Custom Command'):
 
 class CustomCommandCreateButton(discord.ui.Button):
     def __init__(self, manager: CustomCommandManager, user: discord.Member) -> None:
-        super().__init__(label='Add Command', style=discord.ButtonStyle.blurple, emoji=Emojis.plus)
+        super().__init__(label='Add Command', style=discord.ButtonStyle.blurple, emoji=Emojis.plus, row=1)
 
         self.manager: CustomCommandManager = manager
         self.user: discord.Member = user
