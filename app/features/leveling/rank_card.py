@@ -448,7 +448,7 @@ class RankCard(BaseRankCard):
             self._prepared_leaderboard_background = await self.prepare_leaderboard_background(background_bytes)
 
         avatars = await asyncio.gather(
-            *(record.user.avatar.with_format('png').with_size(512).read() for record in records)
+            *(record.user.display_avatar.with_format('png').with_size(512).read() for record in records)
         )
         return await self._render_leaderboard(
             self._prepared_leaderboard_background.copy(),
