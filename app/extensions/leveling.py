@@ -533,6 +533,15 @@ class Leveling(Cog):
         await record.fetch_if_necessary()
         await record.execute(message)
 
+    @Cog.listener()
+    async def on_member_remove(self, member: discord.Member) -> None:
+        record = await self.manager.fetch_guild_config(member.guild)
+        if not record.module_enabled:
+            return
+
+        if record.reset_on_leave:
+            await self.manager.delete_member(member)
+
     @group('level-config', aliases=('lc', 'level-configuration', 'level-configs', 'leveling-config'), hybrid=True)
     async def level_config(self, _ctx: Context) -> CommandResponse:
         """Commands for configuring the leveling module."""

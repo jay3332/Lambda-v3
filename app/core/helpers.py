@@ -3,7 +3,9 @@ from __future__ import annotations
 import inspect
 import re
 from functools import wraps
-from typing import Any, AsyncIterable, Awaitable, Callable, Iterable, ParamSpec, TYPE_CHECKING, TypeAlias, TypeVar
+from typing import Any, AsyncIterable, Awaitable, Callable, Iterable, Literal, ParamSpec, TYPE_CHECKING, TypeAlias, \
+    TypeVar, \
+    overload
 
 import discord
 from discord.ext import commands
@@ -197,6 +199,40 @@ def _resolve_command_kwargs(
 
 
 # noinspection PyShadowingBuiltins
+@overload
+def command(
+    name: str = MISSING,
+    *,
+    alias: str = MISSING,
+    aliases: Iterable[str] = MISSING,
+    usage: str = MISSING,
+    brief: str = MISSING,
+    help: str = MISSING,
+    easy_callback: bool | AsyncCallableDecorator = True,
+    hybrid: Literal[True] = False,
+    **other_kwargs: Any,
+) -> Callable[..., HybridCommand]:
+    ...
+
+
+# noinspection PyShadowingBuiltins
+@overload
+def command(
+    name: str = MISSING,
+    *,
+    alias: str = MISSING,
+    aliases: Iterable[str] = MISSING,
+    usage: str = MISSING,
+    brief: str = MISSING,
+    help: str = MISSING,
+    easy_callback: bool | AsyncCallableDecorator = True,
+    hybrid: Literal[False] = False,
+    **other_kwargs: Any,
+) -> Callable[..., Command]:
+    ...
+
+
+# noinspection PyShadowingBuiltins
 def command(
     name: str = MISSING,
     *,
@@ -226,6 +262,42 @@ def command(
 
 def dynamic_command(**kwargs: Any) -> Callable[..., Command]:
     return command(**kwargs, easy_callback=_no_cog_easy_command_callback)
+
+
+# noinspection PyShadowingBuiltins
+@overload
+def group(
+    name: str = MISSING,
+    *,
+    alias: str = MISSING,
+    aliases: Iterable[str] = MISSING,
+    usage: str = MISSING,
+    brief: str = MISSING,
+    help: str = MISSING,
+    easy_callback: bool = True,
+    hybrid: Literal[True] = False,
+    iwc: bool = True,
+    **other_kwargs: Any,
+) -> Callable[..., HybridGroupCommand]:
+    ...
+
+
+# noinspection PyShadowingBuiltins
+@overload
+def group(
+    name: str = MISSING,
+    *,
+    alias: str = MISSING,
+    aliases: Iterable[str] = MISSING,
+    usage: str = MISSING,
+    brief: str = MISSING,
+    help: str = MISSING,
+    easy_callback: bool = True,
+    hybrid: Literal[False] = False,
+    iwc: bool = True,
+    **other_kwargs: Any,
+) -> Callable[..., GroupCommand]:
+    ...
 
 
 # noinspection PyShadowingBuiltins

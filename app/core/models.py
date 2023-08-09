@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 from collections import OrderedDict
 from functools import wraps
 from typing import (
@@ -14,6 +15,7 @@ from typing import (
     TypeVar,
     Union,
 )
+
 import discord
 from discord.ext import commands
 from discord.utils import MISSING, cached_property
@@ -22,10 +24,11 @@ from app.core.flags import ConsumeUntilFlag, FlagMeta, Flags
 from app.util import AnsiColor, AnsiStringBuilder
 from app.util.structures import TemporaryAttribute
 from app.util.types import AsyncCallable, TypedContext, TypedInteraction
-from app.util.views import ConfirmationView
+from app.util.views import ConfirmationView, _dummy_parse_arguments
 
 if TYPE_CHECKING:
     from datetime import datetime
+    from typing_extensions import Self
 
     from app.core import Bot, FlagNamespace
     from app.database import Database
@@ -393,43 +396,6 @@ class Command(commands.Command):
         return super().signature
 
 
-@discord.utils.copy_doc(commands.HybridCommand)
-class HybridCommand(Command, commands.HybridCommand):
-    pass
-
-
-@discord.utils.copy_doc(commands.Group)
-class GroupCommand(commands.Group, Command):
-    @discord.utils.copy_doc(commands.Group.command)
-    def command(self, *args: Any, **kwargs: Any) -> Callable[[AsyncCallable[..., Any]], Command]:
-        def decorator(func: AsyncCallable[..., Any]) -> Command:
-            from app.core.helpers import command
-
-            kwargs.setdefault('parent', self)
-            result = command(*args, **kwargs)(func)
-            self.add_command(result)
-            return result
-
-        return decorator
-
-    @discord.utils.copy_doc(commands.Group.group)
-    def group(self, *args: Any, **kwargs: Any) -> Callable[[AsyncCallable[..., Any]], GroupCommand]:
-        def decorator(func: AsyncCallable[..., Any]) -> GroupCommand:
-            from app.core.helpers import group
-
-            kwargs.setdefault('parent', self)
-            result = group(*args, **kwargs)(func)
-            self.add_command(result)
-            return result
-
-        return decorator
-
-
-@discord.utils.copy_doc(commands.HybridGroup)
-class HybridGroupCommand(GroupCommand, commands.HybridGroup):
-    pass
-
-
 @discord.utils.copy_doc(commands.Context)
 class Context(TypedContext, Generic[CogT]):
     bot: Bot
@@ -555,3 +521,114 @@ class Context(TypedContext, Generic[CogT]):
 
         self._message = result = await super().send(content, **kwargs)
         return result
+
+
+class _AppCommandOverride(discord.app_commands.Command):
+    def copy(self) -> Self:
+        bindings = {
+            self.binding: self.binding,
+        }
+        return self._copy_with(
+            parent=self.parent, binding=self.binding, bindings=bindings,
+            set_on_binding=False,
+        )
+
+
+class HybridContext(Context):
+    full_invoke: AsyncCallable[..., Any]
+
+
+def define_app_command_impl(
+    source: HybridCommand | HybridGroupCommand,
+    cls: type[discord.app_commands.Command | discord.app_commands.Group],
+    **kwargs: Any,
+) -> Callable[[AsyncCallable[..., Any]], None]:
+    def decorator(func: AsyncCallable[..., Any]) -> None:
+        @functools.wraps(func)
+        async def wrapper(slf: Cog, itx: TypedInteraction, *args: Any, **kwds: Any) -> Any:
+            # TODO: call full hooks?
+            # FIXME: this is a bit hacky
+
+            # this is especially hacky
+            source.cog = slf
+            ctx = await slf.bot.get_context(itx)
+            ctx.command = source
+
+            async def invoker(*iargs: Any, **ikwargs: Any) -> Any:
+                ctx.args = [ctx.cog, ctx, *iargs]
+                ctx.kwargs = ikwargs
+
+                with TemporaryAttribute(ctx.command, '_parse_arguments', _dummy_parse_arguments):
+                    return await ctx.bot.invoke(ctx)
+
+            ctx.full_invoke = invoker
+            return await func(slf, ctx, *args, **kwds)
+
+        wrapper.__globals__.update(func.__globals__)  # type: ignore
+        source.app_command = cls(
+            name=source.name,
+            description=source.short_doc,
+            parent=source.parent.app_command if isinstance(source.parent, HybridGroupCommand) else None,
+            callback=wrapper,
+            **kwargs,
+        )
+
+        @source.app_command.error
+        async def on_error(_, interaction: TypedInteraction, error: BaseException) -> None:
+            interaction.client.dispatch('command_error', interaction._baton, error)
+
+    return decorator
+
+
+@discord.utils.copy_doc(commands.HybridCommand)
+class HybridCommand(Command, commands.HybridCommand):
+    def define_app_command(self, **kwargs: Any) -> Callable[[AsyncCallable[..., Any]], None]:
+        return define_app_command_impl(self, _AppCommandOverride, **kwargs)
+
+
+@discord.utils.copy_doc(commands.Group)
+class GroupCommand(commands.Group, Command):
+    @discord.utils.copy_doc(commands.Group.command)
+    def command(self, *args: Any, **kwargs: Any) -> Callable[[AsyncCallable[..., Any]], Command | HybridCommand]:
+        def decorator(func: AsyncCallable[..., Any]) -> Command:
+            from app.core.helpers import command
+
+            kwargs.setdefault('parent', self)
+            result = command(*args, **kwargs)(func)
+            self.add_command(result)
+            return result
+
+        return decorator
+
+    @discord.utils.copy_doc(commands.Group.group)
+    def group(self, *args: Any, **kwargs: Any) -> Callable[
+        [AsyncCallable[..., Any]], GroupCommand | HybridGroupCommand
+    ]:
+        def decorator(func: AsyncCallable[..., Any]) -> GroupCommand:
+            from app.core.helpers import group
+
+            kwargs.setdefault('parent', self)
+            result = group(*args, **kwargs)(func)
+            self.add_command(result)
+            return result
+
+        return decorator
+
+
+@discord.utils.copy_doc(commands.HybridGroup)
+class HybridGroupCommand(GroupCommand, commands.HybridGroup):
+    def define_app_command(self, **kwargs: Any) -> Callable[[AsyncCallable[..., Any]], None]:
+        return define_app_command_impl(self, discord.app_commands.Group, **kwargs)
+
+    def copy(self) -> Self:
+        copy = super().copy()
+        # Ensure app commands are properly copied over
+        if self.app_command is not None:
+            children = copy.app_command._children
+            for key, command in self.app_command._children.items():
+                if key in children:
+                    continue
+                # FIXME: should this deepcopy?
+                children[key] = command
+
+        return copy

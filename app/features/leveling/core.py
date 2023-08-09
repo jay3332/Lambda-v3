@@ -392,3 +392,7 @@ class LevelingManager:
             data = await self.bot.db.get_rank_card(member.id)
             self.rank_cards[member.id] = res = RankCard(data=data, bot=self.bot, user=member)
             return res
+
+    async def delete_member(self, member: Member) -> None:
+        query = 'DELETE FROM levels WHERE guild_id = $1 AND user_id = $2'
+        await self.bot.db.execute(query, member.guild.id, member.id)

@@ -5,7 +5,7 @@ import re
 from datetime import timedelta
 from functools import wraps
 from inspect import iscoroutinefunction
-from typing import Any, Awaitable, Callable, Iterable, ParamSpec, Protocol, TYPE_CHECKING, Type, TypeVar
+from typing import Any, Awaitable, Callable, Iterable, ParamSpec, TYPE_CHECKING, Type, TypeVar
 
 from discord.ext.commands import Converter
 

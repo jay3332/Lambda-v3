@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from typing import Awaitable, Callable, TypeAlias, TYPE_CHECKING
+from typing import Any, Awaitable, Callable, TypeAlias, TYPE_CHECKING
 
 import discord
 
+from app.util.structures import TemporaryAttribute
+
 if TYPE_CHECKING:
+    from app.core import Context
+    from app.core.models import HybridCommand, HybridGroupCommand
     from app.util.types import AsyncCallable, TypedInteraction
 
 AnyUser: TypeAlias = discord.User | discord.Member
@@ -74,3 +78,78 @@ class LinkView(discord.ui.View):
         for key, value in mapping.items():
             button = discord.ui.Button(label=key, url=value)
             self.add_item(button)
+
+
+async def _dummy_parse_arguments(_ctx: Context) -> None:
+    pass
+
+
+async def _get_context(command: HybridCommand | HybridGroupCommand, interaction: discord.Interaction) -> Context:
+    interaction._cs_command = command
+    interaction.message = None
+    return await interaction.client.get_context(interaction)
+
+
+async def _invoke_command(
+    command: HybridCommand | HybridGroupCommand,
+    source: discord.Interaction | Context,
+    *,
+    args: Any,
+    kwargs: Any,
+) -> None:
+    ctx = await _get_context(command, source) if isinstance(source, discord.Interaction) else source
+    ctx.args = [ctx.cog, ctx, *args]
+    ctx.kwargs = kwargs
+
+    with TemporaryAttribute(command, '_parse_arguments', _dummy_parse_arguments):
+        await ctx.bot.invoke(ctx)
+
+
+class StaticCommandButton(discord.ui.Button):
+    def __init__(
+        self,
+        *,
+        command: HybridCommand | HybridGroupCommand,
+        command_args: list[Any] = None,
+        command_kwargs: dict[str, Any] = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.command = command
+        self.command_args = command_args or []
+        self.command_kwargs = command_kwargs or {}
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await _invoke_command(self.command, interaction, args=self.command_args, kwargs=self.command_kwargs)
+
+
+class CommandInvocableModal(discord.ui.Modal):
+    def __init__(self, command: HybridCommand | HybridGroupCommand = None, **kwargs) -> None:
+        super().__init__(timeout=300, **kwargs)
+        self.command = command
+
+    async def get_context(self, interaction: TypedInteraction) -> Context:
+        return await _get_context(self.command, interaction)
+
+    # source is _underscored to avoid conflict with commands that have a source parameter
+    async def invoke(self, _source: TypedInteraction | Context, /, *args: Any, **kwargs: Any) -> None:
+        await _invoke_command(self.command, _source, args=args, kwargs=kwargs)
+
+
+GetModal = (
+    Callable[['TypedInteraction'], Awaitable[discord.ui.Modal] | discord.ui.Modal]
+    | discord.ui.Modal
+)
+
+
+class ModalButton(discord.ui.Button):
+    def __init__(self, modal: GetModal, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.modal = modal
+
+    async def callback(self, interaction: TypedInteraction) -> Any:
+        modal = self.modal
+        if callable(modal):
+            modal = await discord.utils.maybe_coroutine(modal, interaction)
+
+        await interaction.response.send_modal(modal)

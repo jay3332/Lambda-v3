@@ -283,3 +283,11 @@ class GuildRecord(BaseRecord):
     def giveaway_role_id(self) -> int | None:
         """Returns the guild's giveaway role ID, if any."""
         return self.data['giveaway_role_id']
+
+    async def delete(self) -> None:
+        """Delete all data associated with this guild."""
+        query = 'DELETE FROM guilds WHERE guild_id = $1'
+        try:
+            await self.db.execute(query, self.guild_id)
+        finally:
+            self.db._guild_records.pop(self.guild_id, None)

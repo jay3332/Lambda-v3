@@ -279,6 +279,28 @@ class Bot(commands.Bot):
 
         self.log.info(f'Gateway received READY @ {self.startup_timestamp}')
 
+    async def on_message(self, message: discord.Message) -> None:
+        if message.author.bot:
+            return
+
+        if message.content in {f'<@{self.user.id}>', f'<@!{self.user.id}>'}:
+            prefix = await self.get_prefix(message)
+            if prefix is None:
+                prefix = default_prefix
+            if isinstance(prefix, list):
+                prefix = prefix[0]
+
+            await message.reply(
+                f"Hey, I'm {self.user.name}. My prefix here is **`{prefix}`**\nAdditionally, "
+                f"most of my commands are available as slash commands.\n\nFor more help, run `{prefix}help`."
+            )
+
+        await self.process_commands(message)
+
+    async def on_guild_remove(self, guild: discord.Guild) -> None:
+        if record := self.db.get_guild_record(guild.id, fetch=False):
+            await record.delete()
+
     async def on_command_error(self, ctx: Context, error: Exception) -> Any:
         # sourcery no-metrics
         """Handles command errors."""
