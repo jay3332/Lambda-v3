@@ -129,7 +129,10 @@ def _wrap_line(text: str, font: FontT, max_width: int, **pilmoji_kwargs) -> list
 
     if buffer:
         new = ' '.join(buffer)
-        width, _ = font.getsize(new)
+        try:
+            width, _ = font.getsize(new)
+        except AttributeError:
+            width = font.getlength(new)
 
         if width >= max_width:
             result += _wrap_text_by_chars(new, max_width, _getsize)

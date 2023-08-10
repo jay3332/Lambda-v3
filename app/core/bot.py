@@ -8,7 +8,8 @@ import os
 import re
 import sys
 from platform import system
-from typing import Any, ClassVar, Final, TYPE_CHECKING, Type
+from time import perf_counter
+from typing import Any, Awaitable, Callable, ClassVar, Final, TYPE_CHECKING, Type
 
 import discord
 import jishaku
@@ -267,6 +268,44 @@ class Bot(commands.Bot):
         ctx = await self.get_context(message)
         await self.invoke(ctx)
 
+    async def gather_messages(
+        self,
+        check: Callable[[discord.Message], bool | Awaitable[bool]] | None = None,
+        *,
+        limit: int | None = None,
+        timeout: float | None = None,
+        callback: Callable[[discord.Message], Any | Awaitable[Any]] | None = None,
+    ) -> list[discord.Message]:
+        """Creates a temporary concurrent listener to gather messages."""
+        can_return = BooleanLike()
+        messages_received = []
+        start_time = perf_counter()
+
+        def should_i_stop():
+            if timeout and perf_counter() - start_time >= timeout:
+                return True
+            if limit and len(messages_received) >= limit:
+                return True
+            return False
+
+        async def temporary_listener(message):
+            if should_i_stop():
+                can_return.unlock()
+                return self.remove_listener(temporary_listener, 'on_message')
+
+            if check and not await discord.utils.maybe_coroutine(check, message):  # type: ignore
+                return
+
+            messages_received.append(message)
+
+            if callback:
+                await discord.utils.maybe_coroutine(callback, message)
+
+        self.add_listener(temporary_listener, 'on_message')
+        while can_return.locked:
+            await asyncio.sleep(0)
+        return messages_received
+
     async def on_first_ready(self) -> None:
         """Prints startup information to the console."""
         self.startup_timestamp = discord.utils.utcnow()
@@ -450,3 +489,31 @@ class Bot(commands.Bot):
     def run(self) -> None:
         """Runs the bot."""
         return super().run(resolved_token)
+
+
+class BooleanLike:
+    """Simple class (Emulates a boolean)"""
+    def __init__(self, locked=True):
+        self._locked = locked
+
+    @property
+    def locked(self):
+        return self._locked
+
+    def lock(self):
+        self._locked = True
+
+    def unlock(self):
+        self._locked = False
+
+    def switch(self):
+        self._locked = not self._locked
+
+    def __bool__(self):
+        return self.locked
+
+    def __int__(self):
+        return int(self.locked)
+
+    def __repr__(self):
+        return f'<{self.__class__.__name__} locked={self.locked}>'
