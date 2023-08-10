@@ -360,6 +360,7 @@ class Giveaways(Cog):
         flags.winners = winners
         flags.message = message
         flags.level = level
+        flags.roles = []
 
         await ctx.full_invoke(
             duration, prize=prize, flags=flags,
