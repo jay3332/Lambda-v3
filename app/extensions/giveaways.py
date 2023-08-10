@@ -22,6 +22,10 @@ if TYPE_CHECKING:
     from app.util.types import TypedInteraction
 
 
+class MockFlags:
+    pass
+
+
 class CreateGiveawayFlags(Flags):
     winners: int = flag(aliases=('winner', 'win'), short='w', default=1)
     message: str = flag(aliases=('msg', 'description', 'desc', 'comment'), short='m')
@@ -352,7 +356,7 @@ class Giveaways(Cog):
         message: str = None,
         level: int = 0,
     ) -> None:
-        flags = object()
+        flags = MockFlags()
         flags.winners = winners
         flags.message = message
         flags.level = level

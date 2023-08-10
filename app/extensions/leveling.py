@@ -44,6 +44,10 @@ def module_enabled() -> Callable[[T], T]:
     return commands.check(predicate)
 
 
+class MockFlags:
+    pass
+
+
 class RankCardFlags(Flags):
     embed: bool = store_true(short='e')
     my_card: bool = store_true(name='my-card', aliases=('my-rank-card', 'mrc', 'mc'), short='m')
@@ -631,7 +635,10 @@ class Leveling(Cog):
 
     @rank.define_app_command()
     async def rank_app_command(self, ctx: HybridContext, user: discord.Member = None) -> None:
-        await ctx.full_invoke(user=user)
+        flags = MockFlags()
+        flags.embed = False
+        flags.my_card = False
+        await ctx.full_invoke(user=user, flags=flags)
 
     @command(aliases=('lb', 'top'), hybrid=True)
     @cooldown(1, 10)

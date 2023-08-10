@@ -28,6 +28,10 @@ class SlowmodeFlags(Flags):
     )
 
 
+class MockFlags:
+    pass
+
+
 class Management(Cog):
     """Commands that aid in managing your server and channels."""
 
@@ -103,7 +107,7 @@ class Management(Cog):
         interval: IntervalConverter,
         reset_after: IntervalConverter = None,
     ) -> None:
-        flags = object()
+        flags = MockFlags()
         flags.reset_after = reset_after
         await ctx.full_invoke(interval=interval, flags=flags)
 
