@@ -6,6 +6,7 @@ from discord.ext.commands import BadArgument, MissingPermissions
 from jishaku.codeblocks import codeblock_converter
 
 from app.core import BAD_ARGUMENT, Cog, Context, ERROR, Flags, PermissionSpec, REPLY, flag, group, store_true
+from app.core.models import HybridContext
 from app.features.custom_commands import CustomCommandManager, CustomCommandRecord
 from app.util import converter
 from app.util.common import cutoff, pluralize
@@ -130,7 +131,7 @@ class CustomCommands(Cog, name='Custom Commands'):
     def cog_load(self) -> None:
         self.manager: CustomCommandManager = CustomCommandManager(self.bot)
 
-    @group('custom-commands', aliases=('custom-command', 'cc', 'ccmd', 'ccmds'))
+    @group('custom-commands', aliases=('custom-command', 'cc', 'ccmd', 'ccmds'), hybrid=True, fallback='list')
     async def custom_commands(self, ctx: Context) -> CommandResponse:
         """Interface around Lambda's custom command system.
 
@@ -175,7 +176,7 @@ class CustomCommands(Cog, name='Custom Commands'):
             ] if show_button else None,
         ), REPLY
 
-    @custom_commands.command('make', aliases=('interactive', 'new'), user_permissions=('manage_guild',))
+    @custom_commands.command('make', aliases=('interactive', 'new'), user_permissions=('manage_guild',), hybrid=True)
     async def make_custom_command(self, ctx: Context) -> CommandResponse:
         """Interactively create a custom command.
 
@@ -184,7 +185,7 @@ class CustomCommands(Cog, name='Custom Commands'):
         """
         return f'WIP, use `{ctx.clean_prefix}cc create` instead', REPLY
 
-    @custom_commands.command('create', aliases=('add', 'quick', '+'), user_permissions=('manage_guild',))
+    @custom_commands.command('create', aliases=('add', 'quick', '+'), user_permissions=('manage_guild',), hybrid=True, with_app_command=False)
     async def create_custom_command(self, ctx: Context, name: str, *, response: str, flags: CustomCommandCreateFlags) -> CommandResponse:
         """Create a custom command in one message.
 
@@ -241,7 +242,11 @@ class CustomCommands(Cog, name='Custom Commands'):
         await self.manager.add_command(guild=ctx.guild, **kwargs)
         return f'Successfully created custom command `{name}`.', REPLY
 
-    @custom_commands.command('delete', aliases=('remove', 'rm', 'del', '-'), user_permissions=('manage_guild',))
+    @create_custom_command.define_app_command()
+    async def create_custom_command_app_command(self, ctx: HybridContext, name: str, *, response: str) -> None:
+        await ctx.full_invoke(name, response=response)
+
+    @custom_commands.command('delete', aliases=('remove', 'rm', 'del', '-'), user_permissions=('manage_guild',), hybrid=True, with_app_command=False)
     async def delete_custom_command(self, ctx: Context, *names: str) -> CommandResponse:
         """Delete a custom command, or multiple custom commands.
 
@@ -286,10 +291,15 @@ class CustomCommands(Cog, name='Custom Commands'):
 
         return f'Successfully deleted {count} custom commands.', REPLY
 
+    @delete_custom_command.define_app_command()
+    async def delete_custom_command_app_command(self, ctx: HybridContext, name: str) -> None:
+        await ctx.full_invoke(name)
+
     @custom_commands.command(
         name='edit',
         aliases=('edit-response', 'modify', 'change', 'update', 'e', '~'),
         user_permissions=('manage_guild',),
+        hybrid=True,
     )
     async def edit_custom_command(self, _ctx: Context, command: CustomCommandConverter, *, response: str) -> CommandResponse:
         """Edit a custom command's response.
@@ -315,7 +325,7 @@ class CustomCommands(Cog, name='Custom Commands'):
         await command.update(response=response)
         return f'Successfully modified custom command {command.name!r}.', REPLY  # TODO: edit diff history
 
-    @custom_commands.command(name='info', aliases=('i', 'view', 'v', 'information', 'details'))
+    @custom_commands.command(name='info', aliases=('i', 'view', 'v', 'information', 'details'), hybrid=True)
     async def custom_command_info(self, ctx: Context, command: CustomCommandConverter) -> CommandResponse:
         """View information about a custom command.
 
@@ -356,7 +366,7 @@ class CustomCommands(Cog, name='Custom Commands'):
 
         return embed, REPLY
 
-    @custom_commands.command(name='raw', aliases=('source', 's', 'src', 'response'))
+    @custom_commands.command(name='raw', aliases=('source', 's', 'src', 'response'), hybrid=True)
     async def custom_command_raw(self, ctx: Context, command: CustomCommandConverter) -> CommandResponse:
         """View the raw response of a custom command.
 

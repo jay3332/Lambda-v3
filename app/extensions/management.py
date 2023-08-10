@@ -8,6 +8,7 @@ from discord.ext import commands
 
 from app.core import Cog, Context, Flags, command, cooldown, flag, store_true
 from app.core.helpers import BAD_ARGUMENT
+from app.core.models import HybridContext
 from app.util.common import humanize_duration
 from app.util.converters import IntervalConverter
 
@@ -40,6 +41,8 @@ class Management(Cog):
         aliases=('slow', 'sm'),
         user_permissions=('manage_channels',),
         bot_permissions=('manage_channels',),
+        hybrid=True,
+        with_app_command=False,
     )
     @cooldown(3, 3, commands.BucketType.member)
     async def slowmode(
@@ -92,6 +95,17 @@ class Management(Cog):
                 return message, dict(ephemeral=True)
             return
         return message
+
+    @slowmode.define_app_command()
+    async def slowmode_app_command(
+        self,
+        ctx: HybridContext,
+        interval: IntervalConverter,
+        reset_after: IntervalConverter = None,
+    ) -> None:
+        flags = object()
+        flags.reset_after = reset_after
+        await ctx.full_invoke(interval=interval, flags=flags)
 
     @Cog.listener()
     async def on_reset_slowmode_timer_complete(self, timer: Timer) -> None:

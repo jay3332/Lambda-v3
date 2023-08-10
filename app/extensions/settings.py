@@ -14,7 +14,7 @@ class Settings(Cog):
     emoji = '\u2699\ufe0f'
     MENTION_REGEX: re.Pattern[str] = re.compile(r'<@!?\d+>')
 
-    @group(aliases=('pf', 'prefixes', 'pref'))
+    @group(aliases=('pf', 'prefixes', 'pref'), hybrid=True, fallback='list')
     async def prefix(self, ctx: Context) -> CommandResponse:
         """View your server's prefixes."""
         record = await self.bot.db.get_guild_record(ctx.guild.id)
@@ -34,7 +34,11 @@ class Settings(Cog):
         message = '*I will always respond to mentions.*'
         return message, embed, REPLY
 
-    @prefix.command('add', aliases=('create', '+', 'append', 'new', 'update'), user_permissions=('manage_guild',))
+    @prefix.command(
+        'add',
+        aliases=('create', '+', 'append', 'new', 'update'), user_permissions=('manage_guild',),
+        hybrid=True, with_app_command=False,
+    )
     async def prefix_add(self, ctx: Context, *prefixes: str) -> CommandResponse:
         """Add a prefix to your server's prefixes.
 
@@ -70,7 +74,11 @@ class Settings(Cog):
 
         return f'Added {len(prefixes)} prefixes.', REPLY
 
-    @prefix.command('remove', aliases=('delete', '-', 'del', 'rm'), user_permissions=('manage_guild',))
+    @prefix_add.define_app_command()
+    async def prefix_add_app_command(self, ctx, prefix: str) -> None:
+        await ctx.full_invoke(prefix)
+
+    @prefix.command('remove', aliases=('delete', '-', 'del', 'rm'), user_permissions=('manage_guild',), hybrid=True, with_app_command=False)
     async def prefix_remove(self, ctx: Context, *prefixes: str) -> CommandResponse:
         """Remove a prefix from your server's prefixes.
 
@@ -101,7 +109,11 @@ class Settings(Cog):
 
         return f'Removed {diff} prefixes.', REPLY
 
-    @prefix.command('clear', alias='wipe', user_permissions=('manage_guild',))
+    @prefix_remove.define_app_command()
+    async def prefix_remove_app_command(self, ctx, prefix: str) -> None:
+        await ctx.full_invoke(prefix)
+
+    @prefix.command('clear', alias='wipe', user_permissions=('manage_guild',), hybrid=True)
     async def prefix_clear(self, ctx: Context) -> CommandResponse:
         """Clear all of your server's prefixes."""
         record = await self.bot.db.get_guild_record(ctx.guild.id)
@@ -121,7 +133,7 @@ class Settings(Cog):
 
         return pluralize(f'Removed {before} prefix(es).'), REPLY
 
-    @prefix.command('overwrite', aliases=('set', 'override'), user_permissions=('manage_guild',))
+    @prefix.command('overwrite', aliases=('set', 'override'), user_permissions=('manage_guild',), hybrid=True, with_app_command=False)
     async def prefix_overwrite(self, ctx: Context, *prefixes: str) -> CommandResponse:
         """Removes your server's previous prefixes and replaces them with the specified ones.
 
@@ -156,3 +168,7 @@ class Settings(Cog):
             return f'Set {prefixes[0]!r} as the only prefix.', REPLY
 
         return f'Set {len(prefixes)} prefixes.', REPLY
+
+    @prefix_overwrite.define_app_command()
+    async def prefix_overwrite_app_command(self, ctx, prefix: str) -> None:
+        await ctx.full_invoke(prefix)

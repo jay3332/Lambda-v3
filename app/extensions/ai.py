@@ -6,7 +6,6 @@ from typing import Annotated, Any, ClassVar, TYPE_CHECKING
 import aiohttp
 import difflib
 import discord
-from async_google_trans_new.constant import LANGUAGES
 from PIL import Image as PilImage
 
 from app.core import BAD_ARGUMENT, ERROR, Cog, Context, Flags, Param, REPLY, cooldown, flag, group, store_true
@@ -19,13 +18,13 @@ from config import Colors, computer_vision_key
 
 if TYPE_CHECKING:
     from app.util.types import CommandResponse
-
-_REVERSE_LANGUAGE_MAPPING = {v: k for k, v in LANGUAGES.items()}
-_EXTRA_MAPPING = {
-    'chinese': 'zh-cn',
-    'cn': 'zh-cn',
-    'tw': 'zh-tw',
-}
+#
+# _REVERSE_LANGUAGE_MAPPING = {v: k for k, v in LANGUAGES.items()}
+# _EXTRA_MAPPING = {
+#     'chinese': 'zh-cn',
+#     'cn': 'zh-cn',
+#     'tw': 'zh-tw',
+# }
 
 
 @converter
@@ -40,37 +39,37 @@ async def Link(_ctx: Context, argument: str) -> str:
 
     raise BadArgument(f'`{argument[:1000]}` is not a valid link.')
 
+#
+# @converter
+# async def TranslationLanguage(ctx: Context, argument: str) -> str:
+#     argument = argument.lower()
+#
+#     if argument == 'auto':
+#         return argument
+#
+#     if argument in _REVERSE_LANGUAGE_MAPPING:
+#         return _REVERSE_LANGUAGE_MAPPING[argument]
+#
+#     if argument in _REVERSE_LANGUAGE_MAPPING.values():
+#         return argument
+#
+#     try:
+#         return _EXTRA_MAPPING[argument]
+#     except KeyError:
+#         matches = difflib.get_close_matches(argument, LANGUAGES, cutoff=0.8)
+#
+#         raise BadArgument(
+#             f'`{argument}` is not a valid language. '
+#             f'See `{ctx.clean_prefix}translate languages` for a list of valid languages.\n\n'
+#             + (
+#                 f'Did you mean: {", ".join(f"`{m}` ({LANGUAGES[m]})" for m in matches)}'
+#             )
+#         )
 
-@converter
-async def TranslationLanguage(ctx: Context, argument: str) -> str:
-    argument = argument.lower()
 
-    if argument == 'auto':
-        return argument
-
-    if argument in _REVERSE_LANGUAGE_MAPPING:
-        return _REVERSE_LANGUAGE_MAPPING[argument]
-
-    if argument in _REVERSE_LANGUAGE_MAPPING.values():
-        return argument
-
-    try:
-        return _EXTRA_MAPPING[argument]
-    except KeyError:
-        matches = difflib.get_close_matches(argument, LANGUAGES, cutoff=0.8)
-
-        raise BadArgument(
-            f'`{argument}` is not a valid language. '
-            f'See `{ctx.clean_prefix}translate languages` for a list of valid languages.\n\n'
-            + (
-                f'Did you mean: {", ".join(f"`{m}` ({LANGUAGES[m]})" for m in matches)}'
-            )
-        )
-
-
-class TranslateFlags(Flags):
-    render: bool = store_true(short='r', aliases=('render-image', 'immediately-render', 'image', 'as-image'))
-    source: TranslationLanguage = flag(short='s', aliases=('src', 'from', 'source-lang', 'original'), default='auto')
+# class TranslateFlags(Flags):
+#     render: bool = store_true(short='r', aliases=('render-image', 'immediately-render', 'image', 'as-image'))
+#     source: TranslationLanguage = flag(short='s', aliases=('src', 'from', 'source-lang', 'original'), default='auto')
 
 
 class TranslatedOcrView(UserView):
@@ -237,68 +236,68 @@ class AI(Cog):
         )},
     }
 
-    @ocr.command('translate', aliases=('tr', 't', 'translated'))
-    @cooldown(1, 25)
-    @user_max_concurrency(1)
-    async def ocr_translate(
-        self,
-        ctx: Context,
-        image: Link | None = None,  # type: ignore
-        destination: Annotated[str, TranslationLanguage] = 'en',
-        *,
-        flags: TranslateFlags,
-    ) -> CommandResponse:
-        """Reads text/characters from an image and translates them into the given destination language.
-
-        Arguments:
-        - `image`: The image to read text from. Can be provided as an attachment or URL.
-        - `destination`: The language to translate to. See `{PREFIX}translate languages` for a list of valid languages. Defaults to ``en`` (English).
-
-        Flags:
-        - `--source <source>`: The source language of the text in the image. By default, the language will automatically be detected.
-        - `--render`: Whether to directly render translated content on top of the image. This will give a "Google Lens-like" result. This *will* take time.
-        """
-        image = await self.OCR_FINDER.find(ctx, image, allow_gifs=False, fallback_to_user=False, run_conversions=False)
-        if image is None:
-            return 'Could not find an image. Please provide an image or direct link.', BAD_ARGUMENT, Param('image')
-
-        async with ctx.typing():
-            try:
-                raw_text, data = await self._request_ocr(
-                    image,
-                    language=self._GOOGLE_TO_BCP_MAPPING.get(flags.source, 'unk'),
-                )
-            except aiohttp.ClientResponseError as exc:
-                return f'Error {exc.status}: {exc.message}', ERROR
-
-            if not flags.render:
-                translated = await ctx.bot.translator.translate(raw_text, destination, lang_src=flags.source)
-                if isinstance(translated, list):
-                    translated = translated[0]
-
-                view = TranslatedOcrView(
-                    ctx, raw_text=raw_text, translated=translated, data=data,
-                    image=image, dest=destination, source=flags.source,
-                )
-
-                if len(translated) <= 4096:
-                    embed = discord.Embed(color=Colors.primary, description=translated, timestamp=ctx.now)
-                    embed.set_author(name='Translated Text', icon_url=ctx.author.display_avatar)
-
-                    return embed, REPLY
-
-                return (
-                    'Translated Text:',
-                    discord.File(BytesIO(translated.encode()), filename=f'ocr_translation_{ctx.author.id}.txt'),
-                    view,
-                    REPLY,
-                )
-
-            renderer = OCRRenderer(self.bot, data)
-            fp = await renderer.render_translated(image, destination, source=flags.source)
-
-            if fp.getbuffer().nbytes < ctx.guild.filesize_limit - 1024:  # 1 KB of breathing room
-                return discord.File(fp, filename=f'ocr_translation_{ctx.author.id}.png'), REPLY
-
-            entry = await ctx.bot.cdn.safe_upload(fp, extension='png', directory='ocr_uploads')
-            return entry.url, REPLY
+    # @ocr.command('translate', aliases=('tr', 't', 'translated'))
+    # @cooldown(1, 25)
+    # @user_max_concurrency(1)
+    # async def ocr_translate(
+    #     self,
+    #     ctx: Context,
+    #     image: Link | None = None,  # type: ignore
+    #     destination: Annotated[str, TranslationLanguage] = 'en',
+    #     *,
+    #     flags: TranslateFlags,
+    # ) -> CommandResponse:
+    #     """Reads text/characters from an image and translates them into the given destination language.
+    #
+    #     Arguments:
+    #     - `image`: The image to read text from. Can be provided as an attachment or URL.
+    #     - `destination`: The language to translate to. See `{PREFIX}translate languages` for a list of valid languages. Defaults to ``en`` (English).
+    #
+    #     Flags:
+    #     - `--source <source>`: The source language of the text in the image. By default, the language will automatically be detected.
+    #     - `--render`: Whether to directly render translated content on top of the image. This will give a "Google Lens-like" result. This *will* take time.
+    #     """
+    #     image = await self.OCR_FINDER.find(ctx, image, allow_gifs=False, fallback_to_user=False, run_conversions=False)
+    #     if image is None:
+    #         return 'Could not find an image. Please provide an image or direct link.', BAD_ARGUMENT, Param('image')
+    #
+    #     async with ctx.typing():
+    #         try:
+    #             raw_text, data = await self._request_ocr(
+    #                 image,
+    #                 language=self._GOOGLE_TO_BCP_MAPPING.get(flags.source, 'unk'),
+    #             )
+    #         except aiohttp.ClientResponseError as exc:
+    #             return f'Error {exc.status}: {exc.message}', ERROR
+    #
+    #         if not flags.render:
+    #             translated = await ctx.bot.translator.translate(raw_text, destination, lang_src=flags.source)
+    #             if isinstance(translated, list):
+    #                 translated = translated[0]
+    #
+    #             view = TranslatedOcrView(
+    #                 ctx, raw_text=raw_text, translated=translated, data=data,
+    #                 image=image, dest=destination, source=flags.source,
+    #             )
+    #
+    #             if len(translated) <= 4096:
+    #                 embed = discord.Embed(color=Colors.primary, description=translated, timestamp=ctx.now)
+    #                 embed.set_author(name='Translated Text', icon_url=ctx.author.display_avatar)
+    #
+    #                 return embed, REPLY
+    #
+    #             return (
+    #                 'Translated Text:',
+    #                 discord.File(BytesIO(translated.encode()), filename=f'ocr_translation_{ctx.author.id}.txt'),
+    #                 view,
+    #                 REPLY,
+    #             )
+    #
+    #         renderer = OCRRenderer(self.bot, data)
+    #         fp = await renderer.render_translated(image, destination, source=flags.source)
+    #
+    #         if fp.getbuffer().nbytes < ctx.guild.filesize_limit - 1024:  # 1 KB of breathing room
+    #             return discord.File(fp, filename=f'ocr_translation_{ctx.author.id}.png'), REPLY
+    #
+    #         entry = await ctx.bot.cdn.safe_upload(fp, extension='png', directory='ocr_uploads')
+    #         return entry.url, REPLY

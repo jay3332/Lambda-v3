@@ -69,7 +69,7 @@ website: str = 'https://lambda.jay3332.tech'
 
 owner: Collection[int] | int = 414556245178056706
 test_guild: int = 809972022360539206
-default_prefix: Collection[str] | str = '>'
+default_prefix: Collection[str] | str = '>:)' if beta else '>'
 allowed_mentions: AllowedMentions = AllowedMentions(everyone=False, users=True, roles=False, replied_user=False)
 
 token: str = env('DISCORD_TOKEN')

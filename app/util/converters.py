@@ -4,6 +4,7 @@ import re
 from datetime import timedelta
 from typing import ClassVar, Final, TYPE_CHECKING, Type
 
+from discord import app_commands
 from discord.ext.commands import BadArgument, Converter
 
 if TYPE_CHECKING:
@@ -22,7 +23,7 @@ RELATIVE_TIME_REGEX: Final[re.Pattern[str]] = re.compile(
 )
 
 
-class IntervalConverter(Converter[timedelta]):
+class IntervalConverter(Converter[timedelta], app_commands.Transformer):
     """Return a timedelta representing the interval of time specified.
 
     This can also be used as a way to parse relative time.
@@ -59,4 +60,7 @@ class IntervalConverter(Converter[timedelta]):
         return timedelta(seconds=seconds), match
 
     async def convert(self, ctx: Context, argument: str) -> timedelta:
+        return self._convert(argument)[0]
+
+    async def transform(self, itx, argument: str) -> timedelta:
         return self._convert(argument)[0]

@@ -13,6 +13,7 @@ from discord.ext import commands
 
 from app.core import Cog, Context, Flags, REPLY, command, cooldown, flag, group, store_true
 from app.core.helpers import BAD_ARGUMENT, guild_max_concurrency, user_max_concurrency
+from app.core.models import HybridContext
 from app.features.leveling.core import LevelingConfig, LevelingManager, LevelingRecord
 from app.features.leveling.rank_card import Font as RankCardFont, RankCard
 from app.util import AnsiColor, AnsiStringBuilder, UserView, converter
@@ -584,7 +585,7 @@ class Leveling(Cog):
         )
         await view.wait()
 
-    @command(aliases=('r', 'level', 'lvl', 'lv', 'xp', 'exp'), bot_permissions=('attach_files',))
+    @command(aliases=('r', 'level', 'lvl', 'lv', 'xp', 'exp'), bot_permissions=('attach_files',), hybrid=True, with_app_command=False)
     @describe(user='The user to view the level of. Defaults to yourself.', flags='Flags to modify the command.')
     @cooldown(1, 5)
     @user_max_concurrency(1)
@@ -628,6 +629,10 @@ class Leveling(Cog):
 
         return f'Rank card for **{user}**:', discord.File(result, filename=f'rank_card_{user.id}.png'), REPLY
 
+    @rank.define_app_command()
+    async def rank_app_command(self, ctx: HybridContext, user: discord.Member = None) -> None:
+        await ctx.full_invoke(user=user)
+
     @command(aliases=('lb', 'top'), hybrid=True)
     @cooldown(1, 10)
     @user_max_concurrency(1)
@@ -664,6 +669,10 @@ class Leveling(Cog):
         paginator = Paginator(ctx, LeaderboardFormatter(rank_card, records), page=flags.page - 1)
         async with ctx.typing():
             yield message, paginator, REPLY
+
+    @leaderboard.define_app_command()
+    async def leaderboard_app_command(self, ctx: HybridContext) -> None:
+        await ctx.full_invoke()
 
     @group('rank-card', aliases=('rc', 'card', 'rankcard', 'levelcard', 'level-card'), bot_permissions=('attach_files',))
     async def rank_card(self, ctx: Context) -> None:

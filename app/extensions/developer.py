@@ -10,7 +10,7 @@ from textwrap import dedent
 from typing import Annotated, ClassVar
 
 import discord
-from discord.app_commands import Choice, autocomplete, describe
+from discord.app_commands import Choice, describe
 from discord.ext.commands import Range
 from jishaku.codeblocks import codeblock_converter
 
@@ -39,7 +39,7 @@ class Developer(Cog):
     def cog_load(self) -> None:
         self.docs: DocumentationManager = DocumentationManager(self.bot)
 
-    @group(aliases={'doc-search', 'rtfd'})
+    @group(aliases={'doc-search', 'rtfd'}, hybrid=True, fallback='search')
     async def rtfm(self, ctx: Context, source: DocumentationSource | None = None, *, query: str = None) -> CommandResponse:
         """Search documentation nodes given a query.
 
@@ -53,23 +53,13 @@ class Developer(Cog):
 
         return await self.docs.execute_rtfm(ctx, source=source, query=query), REPLY
 
-    @rtfm.command()
+    @rtfm.command(hybrid=True)
     async def sources(self, _ctx: Context) -> CommandResponse:
         """View a list of available documentation sources."""
         return '`' + '` `'.join(source.key for source in self.docs.SOURCES.values()) + '`', REPLY
 
-    async def docs_source_autocomplete(self, _interaction: discord.Interaction, current: str) -> list[Choice]:
-        current = current.casefold()
-
-        return [
-            Choice(name=source.name, value=source.key)
-            for source in self.docs.SOURCES.values()
-            if source.key.startswith(current) or source.name.casefold().startswith(current)
-        ]
-
     @command(aliases={'doc', 'documentation'}, hybrid=True)
     @describe(source='The name of the documentation to use. Defaults to discord.py', node='The documentation node.')
-    @autocomplete(source=docs_source_autocomplete)  # type: ignore
     async def docs(self, ctx: Context, source: DocumentationSource | None = None, *, node: str) -> CommandResponse | None:
         """View rich documentation for a specific node.
 
@@ -86,6 +76,17 @@ class Developer(Cog):
             return
 
         return *result, REPLY
+
+    @rtfm.autocomplete('source')
+    @docs.autocomplete('source')
+    async def docs_source_autocomplete(self, _interaction: discord.Interaction, current: str) -> list[Choice]:
+        current = current.casefold()
+
+        return [
+            Choice(name=source.name, value=source.key)
+            for source in self.docs.SOURCES.values()
+            if source.key.startswith(current) or source.name.casefold().startswith(current)
+        ]
 
     @executor_function
     def run_pyright(self, code: str) -> JsonObject:

@@ -133,7 +133,7 @@ class Reminders(Cog):
         'Sure',
     )
 
-    @group(aliases=('rm', 'remindme', 'remember', 'setreminder', 'reminder'))
+    @group(aliases=('rm', 'remindme', 'remember', 'setreminder', 'reminder'), hybrid=True, fallback='me')
     async def remind(self, ctx: Context, *, reminder: ReminderConverter, flags: ReminderFlags) -> CommandResponse:
         """Sets a reminder for something in the future.
 
@@ -234,7 +234,7 @@ class Reminders(Cog):
         if repeat := metadata['repeat']:
             await self.bot.timers.create(repeat, 'reminder', **metadata)
 
-    @remind.command(name='repeat', aliases=('rp', 'loop'))
+    @remind.command(name='repeat', aliases=('rp', 'loop'), hybrid=True)
     async def remind_repeat(self, ctx: Context, reminder: ReminderId, *, interval: IntervalConverter) -> CommandResponse:
         """Set the interval to repeat the reminder.
 
@@ -259,7 +259,7 @@ class Reminders(Cog):
 
         return f'Now repeating reminder with ID {reminder.id} every {humanize_duration(interval)}.', REPLY
 
-    @remind.command(name='list')
+    @remind.command(name='list', hybrid=True)
     async def remind_list(self, ctx: Context) -> CommandResponse:
         """View all of your pending reminders."""
         query = """
@@ -324,7 +324,7 @@ class Reminders(Cog):
 
         return Paginator(ctx, FieldBasedFormatter(embed, fields)), REPLY
 
-    @remind.command(name='delete', aliases=('-', 'remove', 'cancel', 'forget'), brief='Deletes a reminder.')
+    @remind.command(name='delete', aliases=('-', 'remove', 'cancel', 'forget'), brief='Deletes a reminder.', hybrid=True)
     async def remind_delete(self, ctx: Context, *, reminder: ReminderId) -> CommandResponse:
         """Cancels and deletes a reminder. You cannot restore reminders after they have been deleted.
 
@@ -343,7 +343,7 @@ class Reminders(Cog):
         await ctx.bot.timers.end_timer(reminder, dispatch=False, cascade=True)
         return f'Deleted reminder with ID {reminder.id}: {message}', REPLY
 
-    @remind.command(name='clear', aliases=('wipe', 'deleteall', 'removeall', 'reset'))
+    @remind.command(name='clear', aliases=('wipe', 'deleteall', 'removeall', 'reset'), hybrid=True)
     async def remind_clear(self, ctx: Context) -> CommandResponse:
         """Cancel all of your pending reminders."""
         if not await ctx.confirm(

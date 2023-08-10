@@ -7,6 +7,7 @@ import discord
 from discord.utils import format_dt
 
 from app.core import Bot, Cog, Context, ERROR, Flags, REPLY, Timer, flag, group
+from app.core.models import HybridContext
 from app.util.common import cutoff, pluralize
 from app.util.converters import IntervalConverter
 from app.util.types import CommandResponse
@@ -210,12 +211,12 @@ class Giveaways(Cog):
             finally:
                 await self.bot.db.release(conn)
 
-    @group(aliases=('g', 'gw', 'gaw', 'giveaways'))
+    @group(aliases=('g', 'gw', 'gaw', 'giveaways'), hybrid=True, fallback='help')
     async def giveaway(self, ctx: Context) -> None:
         """Commands for creating, handling, and managing giveaways."""
         await ctx.send_help(ctx.command)
 
-    @giveaway.command(name='role', aliases=('setrole', 'giveawayrole'), user_permissions=('manage_guild',))
+    @giveaway.command(name='role', aliases=('setrole', 'giveawayrole'), user_permissions=('manage_guild',), hybrid=True)
     async def giveaway_set_role(self, ctx: Context, *, role: discord.Role) -> CommandResponse:
         """Sets the giveaway role for this guild.
 
@@ -230,7 +231,7 @@ class Giveaways(Cog):
 
         return f'Giveaway role set to {role.mention}. Users with this role will be able to create giveaways.', REPLY
 
-    @giveaway.command(name='create', aliases=('c', 'new', 'start', 's', '+'))
+    @giveaway.command(name='create', aliases=('c', 'new', 'start', 's', '+'), hybrid=True, with_app_command=False)
     async def giveaway_create(
         self,
         ctx: Context,
@@ -341,6 +342,25 @@ class Giveaways(Cog):
         await ctx.maybe_edit(message, content=message.content, view=view)
         await ctx.maybe_delete(ctx.message)
 
+    @giveaway_create.define_app_command()
+    async def giveaway_create_app_command(
+        self,
+        ctx: HybridContext,
+        duration: IntervalConverter,
+        prize: str,
+        winners: int = 1,
+        message: str = None,
+        level: int = 0,
+    ) -> None:
+        flags = object()
+        flags.winners = winners
+        flags.message = message
+        flags.level = level
+
+        await ctx.full_invoke(
+            duration, prize=prize, flags=flags,
+        )
+
     @Cog.listener()
     async def on_giveaway_end_timer_complete(self, timer: Timer) -> None:
         giveaway = self._giveaway_cache.get(timer.id)  # FIXME: at scale, this needs to be a potential DB query
@@ -349,7 +369,7 @@ class Giveaways(Cog):
 
         await self.end_giveaway(giveaway)
 
-    @giveaway.command(name='end', aliases=('stop', 'cancel', 'delete', 'remove', '-', 'e'))
+    @giveaway.command(name='end', aliases=('stop', 'cancel', 'delete', 'remove', '-', 'e'), hybrid=True)
     async def giveaway_end(self, ctx: Context) -> CommandResponse:
         """Ends a giveaway. This should be invoked by replying to the giveaway embed message."""
         if not ctx.message.reference:

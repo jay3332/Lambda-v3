@@ -7,6 +7,7 @@ from functools import wraps
 from inspect import iscoroutinefunction
 from typing import Any, Awaitable, Callable, Iterable, ParamSpec, TYPE_CHECKING, Type, TypeVar
 
+from discord import app_commands
 from discord.ext.commands import Converter
 
 from config import Emojis
@@ -62,9 +63,12 @@ def sentinel(name: str, **dunders: KwargT) -> ConstantT:  # "sentinel" is a misl
 
 def converter(func: Callable[[Context, str], T]) -> Type[Converter | T]:
     """Creates a :class:`discord.ext.commands.Converter` that calls the decorated function on the input."""
-    class Wrapper(Converter['T']):
+    class Wrapper(Converter['T'], app_commands.Transformer):
         async def convert(self, ctx: Context, argument: str) -> T:
             return await func(ctx, argument)
+
+        async def transform(self, itx, argument: str) -> T:
+            return await func(itx._baton, argument)
 
     return Wrapper
 
